@@ -1,0 +1,11 @@
+# Ignore everything
+*
+
+# Re-allow folders so Git can keep walking the tree
+!*/
+
+# Keep Python files anywhere
+!*.py
+
+# Keep this file too
+!.gitignore
