@@ -1,4 +1,3 @@
-from asyncio import log
 import json
 import os
 import time
@@ -9,14 +8,18 @@ from selenium.webdriver.common.keys import Keys
 def locate_element(driver, selectors, by=By.CSS_SELECTOR):
     for selector in selectors:
         elements = driver.find_elements(by, selector)
-        visible_elements = [el for el in elements if el.is_displayed() and el.is_enabled()]
-        if visible_elements:
-            return visible_elements[0]
+        enabled_elements = [el for el in elements if el.is_enabled()]
+        if enabled_elements:
+            return enabled_elements[0]
     return None
 
-def login(driver, log=print, use_cookies=False):
-    credential_file = "facebook_credentials.txt"
-    cookies_file = "facebook_cookies.json"
+def login(
+    driver,
+    log=print,
+    use_cookies=False,
+    credential_file="facebook_credentials.txt",
+    cookies_file="facebook_cookies.json",
+):
 
     driver.get("https://www.facebook.com/")
 
@@ -99,7 +102,7 @@ def login(driver, log=print, use_cookies=False):
 
     log("Facebook login completed.")
 
-def get_dialog(driver, url):
+def get_dialog(driver, url, log=print):
     driver.get(url)
     time.sleep(5)  # Wait for the page to load
 
@@ -170,7 +173,7 @@ def comment_on_post(dialog, comment_text):
     time.sleep(0.2)
     comment_box.send_keys(Keys.RETURN)
 
-def share_post(dialog):
+def share_post(dialog, content):
     selectors = [
         ".//div[@role='button' and @aria-label='Send this to friends or post it on your profile.']",
         ".//div[@role='button' and contains(@aria-label,'Send this to friends')]",
@@ -186,4 +189,90 @@ def share_post(dialog):
         raise RuntimeError("Share button not found in post dialog")
 
     share_button.click()
+    time.sleep(3)
+
+    selectors = [
+        ".//div[@role='textbox' and @contenteditable='true' and contains(@aria-label,'Say something about this...')]",
+    ]
+
+    content_box = locate_element(dialog, selectors, by=By.XPATH)
+    if not content_box:
+        raise RuntimeError("Share content input box not found in share dialog")
+    content_box.click()
+    time.sleep(0.5)
+    content_box.send_keys(content)
+    time.sleep(0.5)
+
+    selectors = [
+        ".//div[@role='button' and @aria-label='Share now']"
+    ]
+
+    share_now_button = locate_element(dialog, selectors, by=By.XPATH)
+    if not share_now_button:
+        raise RuntimeError("Share Now button not found in share dialog")
+    share_now_button.click()
+    time.sleep(3)
+
+
+def post_to_group(driver, group_link, post_content, image_paths=None, log=print):
+    image_paths = image_paths or []
+
+    driver.get(group_link)
+    time.sleep(5)
+
+    placeholder_selectors = [
+        "//span[contains(text(), 'Bạn viết gì đi')]/parent::div",
+        "//span[contains(text(), 'Write something')]/parent::div",
+        "//div[@role='button' and contains(@aria-label,'bạn viết gì đi')]",
+        "//div[@role='button' and contains(@aria-label,'Write something')]",
+    ]
+    post_placeholder = locate_element(driver, placeholder_selectors, by=By.XPATH)
+    if not post_placeholder:
+        raise RuntimeError(f"Could not find post placeholder in group: {group_link}")
+
+    post_placeholder.click()
+    time.sleep(2)
+
+    post_area_selectors = [
+        "//div[contains(@aria-placeholder, 'Tạo bài viết công khai') and @contenteditable='true']",
+        "//div[contains(@aria-placeholder, 'Write something') and @contenteditable='true']",
+    ]
+    post_area = locate_element(driver, post_area_selectors, by=By.XPATH)
+    if not post_area:
+        raise RuntimeError(f"Could not find post editor in group: {group_link}")
+
+    post_area.send_keys(post_content)
+
+    if image_paths:
+        for image_path in image_paths:
+            upload_input = locate_element(
+                driver,
+                [
+                    "//input[@accept='image/*,image/heif,image/heic,video/*,video/mp4,video/x-m4v,video/x-matroska,.mkv']",
+                ],
+                by=By.XPATH,
+            )
+            if not upload_input:
+                raise RuntimeError(f"Could not find upload input in group: {group_link}")
+            upload_input.send_keys(image_path)
+            time.sleep(5)
+
+    post_button = locate_element(
+        driver,
+        [
+            "//div[@aria-label='Đăng']",
+            "//div[@aria-label='Post']",
+        ],
+        by=By.XPATH,
+    )
+    if not post_button:
+        raise RuntimeError(f"Could not find post button in group: {group_link}")
+
+    post_button.click()
+    time.sleep(5)
+    log(f"Posted content to group: {group_link}")
+    
+
+
+
 

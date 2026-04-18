@@ -1,11 +1,52 @@
-# Ignore everything
-*
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
 
-# Re-allow folders so Git can keep walking the tree
-!*/
+# Compiled extensions
+*.so
+*.pyd
+*.dll
 
-# Keep Python files anywhere
-!*.py
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
 
-# Keep this file too
-!.gitignore
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test, type-check, and coverage outputs
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# IDE / editor settings
+.vscode/
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local secrets and runtime data (do not commit)
+data/facebook_group_repost/auth/
+data/facebook_group_repost/Images/
+data/facebook_group_repost/content.txt
+data/facebook_group_repost/Group Links/*.txt
+
+# Optional local env files
+.env
+.env.*
