@@ -6,7 +6,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-DATA_DIR = os.path.join(ROOT_DIR, "data", "facebook_group_repost")
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 AUTH_DIR = os.path.join(DATA_DIR, "auth")
 
 if ROOT_DIR not in sys.path:

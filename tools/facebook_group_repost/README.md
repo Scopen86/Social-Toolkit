@@ -6,7 +6,7 @@ Repost content to multiple Facebook groups using Selenium.
 
 - Shared automation library: `lib/facebook_engine.py`
 - Tool entrypoint: `tools/facebook_group_repost/repost.py`
-- Runtime data: `data/facebook_group_repost/`
+- Runtime data: `tools/facebook_group_repost/data/`
 
 ## Run
 
@@ -20,9 +20,9 @@ Optional overrides:
 
 ```bash
 python tools/facebook_group_repost/repost.py \
-	--credential_file data/facebook_group_repost/facebook_credentials.txt \
-	--cookies_file data/facebook_group_repost/facebook_cookies.json \
-	--group_links_file data/facebook_group_repost/group_links.txt \
-	--content_file data/facebook_group_repost/content.txt \
-	--image_dir data/facebook_group_repost/Images
+	--credential_file tools/facebook_group_repost/data/auth/facebook_credentials.txt \
+	--cookies_file tools/facebook_group_repost/data/auth/facebook_cookies.json \
+	--group_links_file "tools/facebook_group_repost/data/Group Links/test.txt" \
+	--content_file tools/facebook_group_repost/data/content.txt \
+	--image_dir tools/facebook_group_repost/data/Images
 ```

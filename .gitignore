@@ -42,10 +42,10 @@ Thumbs.db
 *.log
 
 # Local secrets and runtime data (do not commit)
-data/facebook_group_repost/auth/
-data/facebook_group_repost/Images/
-data/facebook_group_repost/content.txt
-data/facebook_group_repost/Group Links/*.txt
+tools/facebook_group_repost/data/auth/
+tools/facebook_group_repost/data/Images/
+tools/facebook_group_repost/data/content.txt
+tools/facebook_group_repost/data/Group Links/*.txt
 
 # Optional local env files
 .env

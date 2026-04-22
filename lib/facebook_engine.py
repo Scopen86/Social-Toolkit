@@ -236,6 +236,7 @@ def post_to_group(driver, group_link, post_content, image_paths=None, log=print)
     post_area_selectors = [
         "//div[contains(@aria-placeholder, 'Tạo bài viết công khai') and @contenteditable='true']",
         "//div[contains(@aria-placeholder, 'Write something') and @contenteditable='true']",
+        "//div[@role='textbox' and @contenteditable='true' and @data-lexical-editor='true' and contains(@aria-placeholder, 'Bạn viết gì đi')]",
     ]
     post_area = locate_element(driver, post_area_selectors, by=By.XPATH)
     if not post_area:
