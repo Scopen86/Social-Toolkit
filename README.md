@@ -4,6 +4,7 @@ Python automation utilities for social platform workflows.
 
 Current tool included:
 - Facebook Group Repost automation using Selenium.
+- Tkinter GUI for Facebook login, post actions, group posting, and multi-group reposting.
 
 ## Requirements
 
@@ -48,6 +49,27 @@ Run from the repository root:
 ```bash
 python tools/facebook_group_repost/repost.py
 ```
+
+## Facebook GUI
+
+Start the graphical interface from the repository root:
+
+```bash
+python tools/facebook_gui.py
+```
+
+The GUI provides:
+
+- Cookie or credential login, including a button to continue after manual verification/2FA.
+- Opening a post URL and extracting its text.
+- Like, comment, and share actions.
+- Posting text and all media files in a selected folder to one group.
+- Reposting one content file and media folder to every group URL in a selected links file.
+- A live status indicator showing the active action, verification wait, completion, and errors.
+- A Cancel task button for cooperative cancellation, including stopping before the next reposted group.
+
+Start Chrome, log in, and keep the browser open while using the post or group tabs. Selenium Manager
+will find a compatible ChromeDriver when supported by the installed Selenium version.
 
 ### Useful flags
 

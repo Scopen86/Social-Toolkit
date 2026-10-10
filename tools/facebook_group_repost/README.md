@@ -16,6 +16,18 @@ From repository root:
 python tools/facebook_group_repost/repost.py
 ```
 
+The repository also includes a GUI covering the same workflow and the shared library's post actions:
+
+```bash
+python tools/facebook_gui.py
+```
+
+The GUI status bar shows the current operation, including which group is being processed during a
+multi-group repost.
+
+Use **Cancel task** to stop before the next operation or reposted group. A Selenium browser action
+already in progress is allowed to finish safely.
+
 Optional overrides:
 
 ```bash

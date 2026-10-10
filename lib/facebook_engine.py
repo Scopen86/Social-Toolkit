@@ -19,6 +19,7 @@ def login(
     use_cookies=False,
     credential_file="facebook_credentials.txt",
     cookies_file="facebook_cookies.json",
+    wait_for_verification=None,
 ):
 
     driver.get("https://www.facebook.com/")
@@ -78,7 +79,10 @@ def login(
     pass_elem.send_keys(Keys.RETURN)
 
     log("Complete login verification in the browser.")
-    input("Press Enter after login is complete...")
+    if wait_for_verification is None:
+        input("Press Enter after login is complete...")
+    else:
+        wait_for_verification()
 
     # If the login form is still present, login likely did not complete.
     login_form_visible = bool(driver.find_elements(By.NAME, "email")) and bool(
@@ -213,7 +217,6 @@ def share_post(dialog, content):
     share_now_button.click()
     time.sleep(3)
 
-
 def post_to_group(driver, group_link, post_content, image_paths=None, log=print):
     image_paths = image_paths or []
 
@@ -249,7 +252,7 @@ def post_to_group(driver, group_link, post_content, image_paths=None, log=print)
             upload_input = locate_element(
                 driver,
                 [
-                    "//input[@accept='image/*,image/heif,image/heic,video/*,video/mp4,video/x-m4v,video/x-matroska,.mkv']",
+                    "//input[@accept='image/*,image/heif,image/heic,video/*,video/mp4,video/x-m4v,video/x-matroska,.mkv,.avi,.wmv,.mov,.flv,.webm,.3gp,.3g2,.mts,.m2ts,.vob,.divx,.f4v,.ogv']",
                 ],
                 by=By.XPATH,
             )
@@ -273,7 +276,6 @@ def post_to_group(driver, group_link, post_content, image_paths=None, log=print)
     time.sleep(5)
     log(f"Posted content to group: {group_link}")
     
-
 
 
 
