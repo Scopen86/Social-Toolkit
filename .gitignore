@@ -46,6 +46,8 @@ tools/facebook_group_repost/data/auth/
 tools/facebook_group_repost/data/Images/
 tools/facebook_group_repost/data/content.txt
 tools/facebook_group_repost/data/Group Links/*.txt
+tools/facebook_group_repost/data/*.sqlite3
+tools/facebook_group_repost/data/*.sqlite3-*
 
 # Optional local env files
 .env

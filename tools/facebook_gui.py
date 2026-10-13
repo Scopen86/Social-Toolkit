@@ -16,11 +16,12 @@ if ROOT_DIR not in sys.path:
 
 from lib.facebook_engine import (
     comment_on_post,
-    extract_post_message,
+    extract_post_details,
     get_dialog,
     like_post,
     login,
     post_to_group,
+    save_post_to_sqlite,
     share_post,
 )
 
@@ -51,6 +52,7 @@ class FacebookGui(tk.Tk):
             value=os.path.join(AUTH_DIR, "facebook_cookies.json")
         )
         self.post_url = tk.StringVar()
+        self.posts_db = tk.StringVar(value=os.path.join(DATA_DIR, "posts.sqlite3"))
         self.comment_text = tk.StringVar()
         self.share_text = tk.StringVar()
         self.group_url = tk.StringVar()
@@ -140,6 +142,7 @@ class FacebookGui(tk.Tk):
             row=4, column=1, columnspan=3, sticky="ew", padx=6
         )
         ttk.Button(frame, text="Share", command=self.share).grid(row=5, column=0, pady=8)
+        self._path_row(frame, 6, "Posts database:", self.posts_db)
         frame.columnconfigure(1, weight=1)
 
     def _build_group_post(self, parent):
@@ -322,10 +325,14 @@ class FacebookGui(tk.Tk):
         return dialog
 
     def read_post(self):
-        self._run(
-            "Read post",
-            lambda: self._log("Post text:\n" + extract_post_message(self._post_dialog())),
-        )
+        self._run("Read and save post", self._read_and_save_post)
+
+    def _read_and_save_post(self):
+        url = self.post_url.get().strip()
+        post = extract_post_details(self._post_dialog(), url)
+        save_post_to_sqlite(post, self.posts_db.get().strip())
+        self._log("Post text:\n" + post["message"])
+        self._log(f"Saved post {post.get('post_id') or url} to {self.posts_db.get().strip()}")
 
     def like(self):
         self._run(

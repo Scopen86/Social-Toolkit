@@ -1,6 +1,9 @@
 import json
 import os
+import sqlite3
 import time
+from datetime import datetime, timezone
+from urllib.parse import urlparse, parse_qs
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -137,6 +140,104 @@ def extract_post_message(dialog):
             return "\n".join(ordered_unique)
 
     raise RuntimeError("Could not extract post message from dialog")
+
+
+def extract_post_details(dialog, url):
+    """Extract information visible in a Facebook post dialog."""
+    message = extract_post_message(dialog)
+    author = None
+    timestamp = None
+
+    post_id = _facebook_post_id(url)
+    for link in dialog.find_elements(By.CSS_SELECTOR, "a[href]"):
+        href = link.get_attribute("href")
+        label = (link.text or "").strip()
+        if not href:
+            continue
+        path = urlparse(href).path.lower()
+        if not author and label and ("/user/" in path or "/profile.php" in path):
+            author = label
+        if timestamp is None and post_id and f"/posts/{post_id}" in path and label:
+            timestamp = link.get_attribute("aria-label") or label
+
+    if not author:
+        for heading in dialog.find_elements(By.CSS_SELECTOR, "h1, h2, h3"):
+            text = (heading.text or "").strip()
+            for prefix in ("Bài viết của ", "Post by "):
+                if text.startswith(prefix):
+                    author = text[len(prefix):].strip()
+                    break
+            if author:
+                break
+
+    return {
+        "url": url,
+        "post_id": post_id,
+        "message": message,
+        "author": author,
+        "timestamp": timestamp,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _facebook_post_id(url):
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    for key in ("story_fbid", "fbid", "post_id", "multi_permalinks"):
+        if query.get(key):
+            return query[key][0].split(",", 1)[0]
+    parts = [part for part in parsed.path.split("/") if part]
+    for marker in ("posts", "videos", "permalink", "photo"):
+        if marker in parts and parts.index(marker) + 1 < len(parts):
+            return parts[parts.index(marker) + 1]
+    return None
+
+
+def save_post_to_sqlite(post, database_path):
+    """Persist one post record in the posts table."""
+    database_path = os.path.abspath(os.path.expanduser(database_path))
+    os.makedirs(os.path.dirname(database_path), exist_ok=True)
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS posts (
+                id INTEGER PRIMARY KEY,
+                post_id TEXT,
+                url TEXT NOT NULL,
+                message TEXT NOT NULL,
+                author TEXT,
+                timestamp TEXT,
+                captured_at TEXT NOT NULL
+            )
+        """)
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(posts)")}
+        if "data_json" in columns:
+            connection.execute("ALTER TABLE posts DROP COLUMN data_json")
+        if "timestamp_absolute" in columns:
+            connection.execute(
+                "UPDATE posts SET timestamp = timestamp_absolute "
+                "WHERE timestamp_absolute IS NOT NULL"
+            )
+            connection.execute("ALTER TABLE posts DROP COLUMN timestamp_absolute")
+
+        for table in ("post_links", "post_media", "post_engagement_labels"):
+            connection.execute(f"DROP TABLE IF EXISTS {table}")
+
+        values = (
+            post.get("post_id"), post["url"], post["message"], post.get("author"),
+            post.get("timestamp"), post["captured_at"],
+        )
+        row = connection.execute("SELECT id FROM posts WHERE url = ?", (post["url"],)).fetchone()
+        if row:
+            connection.execute("""
+                UPDATE posts SET post_id=?, url=?, message=?, author=?, timestamp=?,
+                    captured_at=? WHERE id=?
+            """, (*values, row[0]))
+        else:
+            connection.execute("""
+                INSERT INTO posts
+                    (post_id, url, message, author, timestamp, captured_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, values)
 
 def like_post(dialog):
     try:
