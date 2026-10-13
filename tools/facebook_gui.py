@@ -21,6 +21,7 @@ from lib.facebook_engine import (
     like_post,
     login,
     post_to_group,
+    scrape_user_group_posts,
     save_post_to_sqlite,
     share_post,
 )
@@ -52,6 +53,8 @@ class FacebookGui(tk.Tk):
             value=os.path.join(AUTH_DIR, "facebook_cookies.json")
         )
         self.post_url = tk.StringVar()
+        self.group_member_url = tk.StringVar()
+        self.scrape_option = tk.StringVar(value="10 newest")
         self.posts_db = tk.StringVar(value=os.path.join(DATA_DIR, "posts.sqlite3"))
         self.comment_text = tk.StringVar()
         self.share_text = tk.StringVar()
@@ -60,6 +63,7 @@ class FacebookGui(tk.Tk):
 
         self._build_ui()
         self.after(100, self._drain_log_queue)
+        self.after(100, self.start_browser)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_ui(self):
@@ -143,6 +147,21 @@ class FacebookGui(tk.Tk):
         )
         ttk.Button(frame, text="Share", command=self.share).grid(row=5, column=0, pady=8)
         self._path_row(frame, 6, "Posts database:", self.posts_db)
+        ttk.Label(frame, text="Group member URL:").grid(row=7, column=0, sticky="w")
+        ttk.Entry(frame, textvariable=self.group_member_url, width=80).grid(
+            row=7, column=1, columnspan=3, sticky="ew", padx=6
+        )
+        ttk.Label(frame, text="Scrape:").grid(row=8, column=0, sticky="w")
+        ttk.Combobox(
+            frame,
+            textvariable=self.scrape_option,
+            values=("10 newest", "last 30 days"),
+            state="readonly",
+            width=18,
+        ).grid(row=8, column=1, sticky="w", padx=6, pady=8)
+        ttk.Button(frame, text="Scrape user posts", command=self.scrape_user_posts).grid(
+            row=8, column=2, sticky="w", pady=8
+        )
         frame.columnconfigure(1, weight=1)
 
     def _build_group_post(self, parent):
@@ -274,6 +293,7 @@ class FacebookGui(tk.Tk):
             self.login_button.configure(state="normal")
             self._log("Chrome browser started.")
             self._set_status("Browser ready")
+            self.after(0, self.login_facebook)
         except Exception as exc:
             self._set_status(f"Failed to start browser: {exc}")
             messagebox.showerror("Browser error", str(exc))
@@ -326,6 +346,21 @@ class FacebookGui(tk.Tk):
 
     def read_post(self):
         self._run("Read and save post", self._read_and_save_post)
+
+    def scrape_user_posts(self):
+        url = self.group_member_url.get().strip()
+        if not url:
+            messagebox.showerror("Missing URL", "Enter a Facebook group member URL.")
+            return
+        self._run(
+            "Scrape group member posts",
+            scrape_user_group_posts,
+            self.driver,
+            url,
+            self.scrape_option.get(),
+            self.posts_db.get().strip(),
+            self._log,
+        )
 
     def _read_and_save_post(self):
         url = self.post_url.get().strip()

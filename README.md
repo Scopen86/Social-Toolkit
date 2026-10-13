@@ -63,6 +63,7 @@ The GUI provides:
 - Cookie or credential login, including a button to continue after manual verification/2FA.
 - Opening a post URL and extracting its text.
 - Reading a post and saving its visible details to a local SQLite database (`tools/facebook_group_repost/data/posts.sqlite3` by default). The database path is editable in the Post actions tab.
+- Scraping a group member's posts, limited to the 10 newest posts or the last 30 days.
 - Like, comment, and share actions.
 - Posting text and all media files in a selected folder to one group.
 - Reposting one content file and media folder to every group URL in a selected links file.
@@ -76,6 +77,8 @@ The post reader stores each post's URL, Facebook post ID (including IDs supplied
 `multi_permalinks`), message, visible author, absolute timestamp, and capture time in the
 `posts` SQLite table. Facebook only exposes information rendered to the logged-in browser, so fields
 unavailable in the page are left empty. Re-reading the same URL updates its row.
+Use the Group member URL field in the Post actions tab to start a user-post scrape. The selected range
+is saved to the same `posts` table.
 
 ### Useful flags
 

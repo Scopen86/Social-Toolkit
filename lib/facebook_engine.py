@@ -1,8 +1,9 @@
 import json
 import os
+import re
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse, parse_qs
 
 from selenium.webdriver.common.by import By
@@ -157,8 +158,20 @@ def extract_post_details(dialog, url):
         path = urlparse(href).path.lower()
         if not author and label and ("/user/" in path or "/profile.php" in path):
             author = label
-        if timestamp is None and post_id and f"/posts/{post_id}" in path and label:
-            timestamp = link.get_attribute("aria-label") or label
+        if timestamp is None and post_id and (
+            f"/posts/{post_id}" in path or _facebook_post_id(href) == post_id
+        ):
+            for candidate in (
+                link.get_attribute("aria-label"),
+                link.get_attribute("title"),
+                label,
+            ):
+                if candidate and _parse_facebook_timestamp(candidate):
+                    timestamp = candidate.strip()
+                    break
+
+    if timestamp is None:
+        timestamp = _absolute_timestamp_from_container(dialog)
 
     if not author:
         for heading in dialog.find_elements(By.CSS_SELECTOR, "h1, h2, h3"):
@@ -183,6 +196,16 @@ def extract_post_details(dialog, url):
 def _facebook_post_id(url):
     parsed = urlparse(url)
     query = parse_qs(parsed.query)
+    # Group photo links often point at an attached image, while the actual
+    # group post ID is carried in values such as ``set=gm.123456789`` or
+    # ``set=pcb.123456789``.
+    for value in query.get("set", []):
+        group_post = re.search(r"(?:^|\.)(?:gm|pcb)\.(\d+)(?:$|\D)", value)
+        if group_post:
+            return group_post.group(1)
+    # A photo's ``fbid`` identifies the attachment, not its containing post.
+    if parsed.path.rstrip("/").endswith("/photo"):
+        return None
     for key in ("story_fbid", "fbid", "post_id", "multi_permalinks"):
         if query.get(key):
             return query[key][0].split(",", 1)[0]
@@ -191,6 +214,169 @@ def _facebook_post_id(url):
         if marker in parts and parts.index(marker) + 1 < len(parts):
             return parts[parts.index(marker) + 1]
     return None
+
+
+def _parse_facebook_timestamp(value):
+    """Parse absolute timestamps exposed in a post link's accessible label."""
+    value = (value or "").strip()
+    vietnamese = re.search(
+        r"(\d{1,2})\s+tháng\s+(\d{1,2}),?\s*(\d{4})\s+lúc\s+(\d{1,2}):(\d{2})",
+        value,
+        re.IGNORECASE,
+    )
+    if vietnamese:
+        day, month, year, hour, minute = map(int, vietnamese.groups())
+        return datetime(year, month, day, hour, minute)
+    for date_format in (
+        "%A, %B %d, %Y at %I:%M %p",
+        "%B %d, %Y at %I:%M %p",
+        "%A, %B %d, %Y at %H:%M",
+    ):
+        try:
+            return datetime.strptime(value, date_format)
+        except ValueError:
+            pass
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.astimezone().replace(tzinfo=None) if parsed.tzinfo else parsed
+    except ValueError:
+        pass
+    return None
+
+
+def _absolute_timestamp_from_container(container):
+    selectors = "[aria-label], [title], [data-tooltip-content], [data-utime], abbr, time"
+    for element in container.find_elements(By.CSS_SELECTOR, selectors):
+        candidates = [
+            element.get_attribute("aria-label"),
+            element.get_attribute("title"),
+            element.get_attribute("data-tooltip-content"),
+            element.get_attribute("datetime"),
+            element.text,
+        ]
+        unix_time = element.get_attribute("data-utime")
+        if unix_time and unix_time.isdigit():
+            try:
+                candidates.append(datetime.fromtimestamp(int(unix_time)).isoformat())
+            except (OverflowError, OSError, ValueError):
+                pass
+        for candidate in candidates:
+            if candidate and _parse_facebook_timestamp(candidate):
+                return candidate.strip()
+    return None
+
+
+def scrape_user_group_posts(driver, profile_url, scrape_option, database_path, log=print):
+    """Read authored posts from a Facebook group member page into the posts table."""
+    profile = urlparse(profile_url)
+    if "facebook.com" not in (profile.hostname or "") or not re.search(
+        r"/groups/[^/]+/user/\d+", profile.path
+    ):
+        raise ValueError("Enter a Facebook group member URL ending in /groups/<group>/user/<id>.")
+
+    if scrape_option == "10 newest":
+        max_posts = 10
+        cutoff = None
+    elif scrape_option == "last 30 days":
+        max_posts = None
+        cutoff = datetime.now() - timedelta(days=30)
+    else:
+        raise ValueError("Scrape option must be '10 newest' or 'last 30 days'.")
+
+    driver.get(profile_url)
+    time.sleep(6)
+    log(f"Opened group member page for {profile.path.split('/')[-1]}.")
+    seen = set()
+    saved_count = 0
+    stale_scrolls = 0
+    group_id = profile.path.split("/")[2]
+    profile_handle = driver.current_window_handle
+    while True:
+        found_on_pass = 0
+        post_headings = driver.find_elements(By.CSS_SELECTOR, "h2")
+        for heading in post_headings:
+            heading_text = (heading.text or "").strip()
+            lower_heading = heading_text.lower()
+            if not any(phrase in lower_heading for phrase in (
+                "đã đăng lên", "posted in", "shared a post in",
+            )):
+                continue
+
+            card = heading
+            post_link = None
+            for _ in range(15):
+                post_links = card.find_elements(
+                    By.CSS_SELECTOR,
+                    "a[href*='/posts/'], a[href*='/photo/']",
+                )
+                post_link = next((link for link in post_links if _facebook_post_id(
+                    link.get_attribute("href") or ""
+                )), None)
+                if post_link:
+                    break
+                try:
+                    card = card.find_element(By.XPATH, "..")
+                except Exception:
+                    break
+            if not post_link:
+                continue
+
+            post_id = _facebook_post_id(post_link.get_attribute("href") or "")
+            if not post_id or post_id in seen:
+                continue
+            card_timestamp = _absolute_timestamp_from_container(card)
+            seen.add(post_id)
+            try:
+                driver.switch_to.new_window("tab")
+                post_url = (
+                    f"https://www.facebook.com/groups/{group_id}/"
+                    f"?multi_permalinks={post_id}&hoisted_section_header_type=recently_seen"
+                )
+                dialog = get_dialog(driver, post_url, log=log)
+                if dialog is None:
+                    log(f"Could not open post {post_id}; skipped.")
+                    continue
+                post = extract_post_details(dialog, post_url)
+                if not post.get("timestamp"):
+                    post["timestamp"] = card_timestamp
+            except Exception as exc:
+                log(f"Could not read post {post_id}: {exc}")
+                continue
+            finally:
+                if driver.current_window_handle != profile_handle:
+                    driver.close()
+                    driver.switch_to.window(profile_handle)
+
+            posted_at = _parse_facebook_timestamp(post.get("timestamp"))
+            if cutoff and not posted_at:
+                log(f"Could not parse absolute timestamp for post {post_id}; skipped.")
+                continue
+            if cutoff and posted_at < cutoff:
+                log(f"Reached post older than 30 days; stopping at {post['timestamp']}.")
+                return saved_count
+
+            save_post_to_sqlite(post, database_path)
+            saved_count += 1
+            found_on_pass += 1
+            log(f"Saved post {post_id} by {post.get('author')} ({post.get('timestamp')}).")
+            if max_posts and saved_count >= max_posts:
+                log(f"Reached the limit of {max_posts} newest posts.")
+                return saved_count
+
+        if not found_on_pass:
+            stale_scrolls += 1
+        else:
+            stale_scrolls = 0
+        if stale_scrolls >= 3:
+            log("No additional authored group posts loaded after three scroll attempts.")
+            break
+
+        driver.switch_to.window(profile_handle)
+        driver.execute_script("window.scrollBy(0, Math.max(window.innerHeight, 1000));")
+        time.sleep(2.5)
+
+    log(f"Finished scraping; saved {saved_count} post(s).")
+    return saved_count
 
 
 def save_post_to_sqlite(post, database_path):
@@ -226,7 +412,18 @@ def save_post_to_sqlite(post, database_path):
             post.get("post_id"), post["url"], post["message"], post.get("author"),
             post.get("timestamp"), post["captured_at"],
         )
-        row = connection.execute("SELECT id FROM posts WHERE url = ?", (post["url"],)).fetchone()
+        if post.get("post_id"):
+            row = connection.execute(
+                "SELECT id FROM posts WHERE post_id = ? ORDER BY id LIMIT 1",
+                (post["post_id"],),
+            ).fetchone()
+            if row:
+                connection.execute(
+                    "DELETE FROM posts WHERE post_id = ? AND id != ?",
+                    (post["post_id"], row[0]),
+                )
+        else:
+            row = connection.execute("SELECT id FROM posts WHERE url = ?", (post["url"],)).fetchone()
         if row:
             connection.execute("""
                 UPDATE posts SET post_id=?, url=?, message=?, author=?, timestamp=?,
