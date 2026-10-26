@@ -392,10 +392,15 @@ def save_post_to_sqlite(post, database_path):
                 message TEXT NOT NULL,
                 author TEXT,
                 timestamp TEXT,
-                captured_at TEXT NOT NULL
+                captured_at TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'Uncategorized'
             )
         """)
         columns = {row[1] for row in connection.execute("PRAGMA table_info(posts)")}
+        if "category" not in columns:
+            connection.execute(
+                "ALTER TABLE posts ADD COLUMN category TEXT NOT NULL DEFAULT 'Uncategorized'"
+            )
         if "data_json" in columns:
             connection.execute("ALTER TABLE posts DROP COLUMN data_json")
         if "timestamp_absolute" in columns:
@@ -410,7 +415,7 @@ def save_post_to_sqlite(post, database_path):
 
         values = (
             post.get("post_id"), post["url"], post["message"], post.get("author"),
-            post.get("timestamp"), post["captured_at"],
+            post.get("timestamp"), post["captured_at"], post.get("category"),
         )
         if post.get("post_id"):
             row = connection.execute(
@@ -427,13 +432,13 @@ def save_post_to_sqlite(post, database_path):
         if row:
             connection.execute("""
                 UPDATE posts SET post_id=?, url=?, message=?, author=?, timestamp=?,
-                    captured_at=? WHERE id=?
+                    captured_at=?, category=COALESCE(?, category) WHERE id=?
             """, (*values, row[0]))
         else:
             connection.execute("""
                 INSERT INTO posts
-                    (post_id, url, message, author, timestamp, captured_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (post_id, url, message, author, timestamp, captured_at, category)
+                VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, 'Uncategorized'))
             """, values)
 
 def like_post(dialog):

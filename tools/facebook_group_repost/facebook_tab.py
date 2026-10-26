@@ -6,11 +6,13 @@ import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from PIL import Image, ImageTk
+from tkinterdnd2 import DND_FILES
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
@@ -27,16 +29,13 @@ from lib.facebook_engine import (
 )
 
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "facebook_group_repost", "data")
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 AUTH_DIR = os.path.join(DATA_DIR, "auth")
 
 
-class FacebookGui(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("Social Toolkit - Facebook")
-        self.geometry("980x760")
-        self.minsize(820, 620)
+class FacebookTab(ttk.Frame):
+    def __init__(self, parent, *, auto_start=False):
+        super().__init__(parent)
 
         self.driver = None
         self.worker = None
@@ -60,11 +59,15 @@ class FacebookGui(tk.Tk):
         self.share_text = tk.StringVar()
         self.group_url = tk.StringVar()
         self.image_dir = tk.StringVar(value=os.path.join(DATA_DIR, "Images"))
+        self._dropped_image_paths = []
+        self._preview_paths = []
+        self._preview_index = 0
+        self._preview_photo = None
 
         self._build_ui()
         self.after(100, self._drain_log_queue)
-        self.after(100, self.start_browser)
-        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        if auto_start:
+            self.after(100, self.start_browser)
 
     def _build_ui(self):
         toolbar = ttk.Frame(self, padding=8)
@@ -189,18 +192,63 @@ class FacebookGui(tk.Tk):
         self._path_row(frame, 0, "Group links file:", self.group_links_file, start_column=0)
         self.repost_content_file = tk.StringVar(value=os.path.join(DATA_DIR, "content.txt"))
         self._path_row(frame, 1, "Content file:", self.repost_content_file, start_column=0)
-        self._path_row(frame, 2, "Image folder:", self.image_dir, choose_directory=True)
+        content_frame = ttk.LabelFrame(frame, text="Post content", padding=6)
+        content_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=3, pady=(8, 4))
+        self.repost_content = tk.Text(content_frame, height=6, wrap="word")
+        self.repost_content.pack(side="left", fill="both", expand=True)
+        content_buttons = ttk.Frame(content_frame)
+        content_buttons.pack(side="right", fill="y", padx=(8, 0))
+        ttk.Button(content_buttons, text="Load file", command=self.load_content_file).pack(
+            fill="x", pady=(0, 4)
+        )
+        ttk.Button(content_buttons, text="Save file", command=self.save_content_file).pack(
+            fill="x"
+        )
+
+        self._path_row(frame, 3, "Image folder:", self.image_dir, choose_directory=True)
+        preview_frame = ttk.LabelFrame(frame, text="Photo preview · drag photos here", padding=6)
+        preview_frame.grid(row=4, column=0, columnspan=3, sticky="ew", padx=3, pady=4)
+        self.photo_preview = ttk.Label(
+            preview_frame,
+            text="No photos selected. Choose an image folder or drop image files here.",
+            anchor="center",
+            relief="groove",
+            width=60,
+        )
+        self.photo_preview.pack(fill="both", expand=True, ipady=50)
+        self._register_drop_target(self.photo_preview, self._drop_images)
+        preview_controls = ttk.Frame(preview_frame)
+        preview_controls.pack(fill="x", pady=(5, 0))
+        self.preview_previous = ttk.Button(
+            preview_controls, text="Previous", command=lambda: self._step_preview(-1), state="disabled"
+        )
+        self.preview_previous.pack(side="left")
+        self.preview_counter = ttk.Label(preview_controls, text="0 / 0")
+        self.preview_counter.pack(side="left", padx=10)
+        self.preview_next = ttk.Button(
+            preview_controls, text="Next", command=lambda: self._step_preview(1), state="disabled"
+        )
+        self.preview_next.pack(side="left")
+        self.preview_source = ttk.Label(preview_controls, text="")
+        self.preview_source.pack(side="right")
+
         ttk.Button(frame, text="Repost to all groups", command=self.repost).grid(
-            row=3, column=1, sticky="w", pady=8
+            row=5, column=1, sticky="w", pady=8
         )
         frame.columnconfigure(1, weight=1)
+        self._refresh_photo_preview()
+        self.load_content_file(show_errors=False)
 
     def _path_row(
         self, parent, row, label, variable, choose_directory=False, start_column=0
     ):
         ttk.Label(parent, text=label).grid(row=row, column=start_column, sticky="w", pady=3)
-        ttk.Entry(parent, textvariable=variable, width=72).grid(
+        entry = ttk.Entry(parent, textvariable=variable, width=72)
+        entry.grid(
             row=row, column=start_column + 1, sticky="ew", padx=6, pady=3
+        )
+        self._register_drop_target(
+            entry, lambda event: self._drop_path(event, variable, choose_directory)
         )
         ttk.Button(
             parent,
@@ -208,8 +256,7 @@ class FacebookGui(tk.Tk):
             command=lambda: self._browse(variable, choose_directory),
         ).grid(row=row, column=start_column + 2, sticky="w", pady=3)
 
-    @staticmethod
-    def _browse(variable, choose_directory):
+    def _browse(self, variable, choose_directory):
         path = (
             filedialog.askdirectory()
             if choose_directory
@@ -217,6 +264,141 @@ class FacebookGui(tk.Tk):
         )
         if path:
             variable.set(path)
+            if variable is self.image_dir:
+                self._dropped_image_paths = []
+                self._refresh_photo_preview()
+            elif variable is getattr(self, "repost_content_file", None):
+                self.load_content_file(show_errors=True)
+
+    def _register_drop_target(self, widget, handler):
+        if hasattr(widget, "drop_target_register"):
+            widget.drop_target_register(DND_FILES)
+            widget.dnd_bind("<<Drop>>", handler)
+
+    def _drop_path(self, event, variable, choose_directory):
+        paths = [str(path) for path in self.tk.splitlist(event.data)]
+        if not paths:
+            return "copy"
+        path = paths[0]
+        if variable is self.image_dir:
+            if os.path.isfile(path) and self._is_image(path):
+                self._drop_images(event)
+                return "copy"
+            self._dropped_image_paths = []
+            if os.path.isdir(path):
+                variable.set(path)
+                self._refresh_photo_preview()
+        else:
+            variable.set(path)
+            if variable is getattr(self, "repost_content_file", None):
+                self.load_content_file(show_errors=True)
+        return "copy"
+
+    @staticmethod
+    def _is_image(path):
+        return os.path.splitext(path)[1].lower() in {
+            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tif", ".tiff"
+        }
+
+    def _drop_images(self, event):
+        paths = [str(path) for path in self.tk.splitlist(event.data)]
+        directories = [path for path in paths if os.path.isdir(path)]
+        image_paths = [path for path in paths if os.path.isfile(path) and self._is_image(path)]
+        if image_paths:
+            self._dropped_image_paths = image_paths
+            self.image_dir.set(os.path.dirname(image_paths[0]))
+            self._refresh_photo_preview(image_paths)
+        elif directories:
+            self._dropped_image_paths = []
+            self.image_dir.set(directories[0])
+            self._refresh_photo_preview()
+        return "copy"
+
+    def _refresh_photo_preview(self, paths=None):
+        if not hasattr(self, "photo_preview"):
+            return
+        if paths is None:
+            if self._dropped_image_paths:
+                paths = self._dropped_image_paths
+            else:
+                folder = self.image_dir.get().strip()
+                paths = (
+                    [
+                        os.path.join(folder, name)
+                        for name in sorted(os.listdir(folder))
+                        if os.path.isfile(os.path.join(folder, name))
+                        and self._is_image(name)
+                    ]
+                    if os.path.isdir(folder)
+                    else []
+                )
+        self._preview_paths = list(paths)
+        self._preview_index = 0
+        self._show_preview_image()
+
+    def _show_preview_image(self):
+        count = len(self._preview_paths)
+        if not count:
+            self._preview_photo = None
+            self.photo_preview.configure(
+                image="",
+                text="No photos selected. Choose an image folder or drop image files here.",
+            )
+            self.preview_counter.configure(text="0 / 0")
+            self.preview_source.configure(text="")
+            self.preview_previous.configure(state="disabled")
+            self.preview_next.configure(state="disabled")
+            return
+        path = self._preview_paths[self._preview_index]
+        try:
+            with Image.open(path) as image:
+                image.thumbnail((640, 260), Image.Resampling.LANCZOS)
+                self._preview_photo = ImageTk.PhotoImage(image.copy())
+            self.photo_preview.configure(image=self._preview_photo, text="")
+            self.preview_source.configure(text=os.path.basename(path))
+        except Exception as exc:
+            self._preview_photo = None
+            self.photo_preview.configure(image="", text=f"Could not preview {os.path.basename(path)}: {exc}")
+        self.preview_counter.configure(text=f"{self._preview_index + 1} / {count}")
+        self.preview_previous.configure(state="normal" if count > 1 else "disabled")
+        self.preview_next.configure(state="normal" if count > 1 else "disabled")
+
+    def _step_preview(self, step):
+        if self._preview_paths:
+            self._preview_index = (self._preview_index + step) % len(self._preview_paths)
+            self._show_preview_image()
+
+    def load_content_file(self, show_errors=True):
+        path = self.repost_content_file.get().strip()
+        if not path or not os.path.isfile(path):
+            if show_errors:
+                messagebox.showerror("Content file not found", f"Choose an existing content file:\n{path}")
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as file:
+                content = file.read()
+            self.repost_content.delete("1.0", "end")
+            self.repost_content.insert("1.0", content)
+            self._log(f"Loaded post content from {path}")
+        except OSError as exc:
+            if show_errors:
+                messagebox.showerror("Could not load content", str(exc))
+
+    def save_content_file(self):
+        path = self.repost_content_file.get().strip()
+        if not path:
+            messagebox.showerror("Content file missing", "Choose a content file path first.")
+            return False
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as file:
+                file.write(self.repost_content.get("1.0", "end-1c"))
+            self._log(f"Saved post content to {path}")
+            self._set_status("Content saved")
+            return True
+        except OSError as exc:
+            messagebox.showerror("Could not save content", str(exc))
+            return False
 
     def _run(self, action, function, *args):
         if self.worker and self.worker.is_alive():
@@ -396,13 +578,15 @@ class FacebookGui(tk.Tk):
         )
 
     def _get_images(self):
+        if self._dropped_image_paths:
+            return [path for path in self._dropped_image_paths if os.path.isfile(path)]
         folder = self.image_dir.get().strip()
         if not folder or not os.path.isdir(folder):
             return []
         return [
             os.path.join(folder, name)
             for name in sorted(os.listdir(folder))
-            if os.path.isfile(os.path.join(folder, name))
+            if os.path.isfile(os.path.join(folder, name)) and self._is_image(name)
         ]
 
     def post_group(self):
@@ -421,15 +605,16 @@ class FacebookGui(tk.Tk):
     def repost(self):
         links_file = self.group_links_file.get().strip()
         content_file = self.repost_content_file.get().strip()
-        if not os.path.isfile(links_file) or not os.path.isfile(content_file):
-            messagebox.showerror("Missing file", "Choose an existing links file and content file.")
+        if not os.path.isfile(links_file) or not content_file:
+            messagebox.showerror("Missing file", "Choose an existing links file and a content file path.")
             return
         with open(links_file, "r", encoding="utf-8") as file:
             links = [line.strip() for line in file if line.strip()]
-        with open(content_file, "r", encoding="utf-8") as file:
-            content = file.read()
+        content = self.repost_content.get("1.0", "end-1c")
         if not links or not content.strip():
-            messagebox.showerror("Empty input", "The links file and content file must not be empty.")
+            messagebox.showerror("Empty input", "The links file and post content must not be empty.")
+            return
+        if not self.save_content_file():
             return
         self._run(
             f"Repost to {len(links)} groups",
@@ -445,13 +630,8 @@ class FacebookGui(tk.Tk):
         self._log(f"Posting to group {index}/{total}: {link}")
         post_to_group(self.driver, link, content, self._get_images(), self._log)
 
-    def _on_close(self):
+    def shutdown(self):
         if self.verification_event:
             self.verification_event.set()
-        self.close_browser()
-        self.destroy()
-
-
-if __name__ == "__main__":
-    app = FacebookGui()
-    app.mainloop()
+        self.cancel_event.set()
+        self.close_browser()\n

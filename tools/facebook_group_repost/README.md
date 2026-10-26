@@ -19,7 +19,7 @@ python tools/facebook_group_repost/repost.py
 The repository also includes a GUI covering the same workflow and the shared library's post actions:
 
 ```bash
-python tools/facebook_gui.py
+python tools/social_toolkit_gui.py
 ```
 
 The GUI status bar shows the current operation, including which group is being processed during a

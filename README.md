@@ -50,13 +50,18 @@ Run from the repository root:
 python tools/facebook_group_repost/repost.py
 ```
 
-## Facebook GUI
+## Unified GUI
 
-Start the graphical interface from the repository root:
+Start the combined Discord and Facebook interface from the repository root:
 
 ```bash
-python tools/facebook_gui.py
+python tools/social_toolkit_gui.py
 ```
+
+The combined interface has separate Discord and Facebook tabs and opens on Facebook by default.
+The Facebook browser starts when you click **Start browser** in its tab. The Discord tab supports
+plain messages, configurable slash command interactions, and clicking enabled buttons discovered on
+recent messages from the configured application.
 
 The GUI provides:
 
@@ -67,6 +72,7 @@ The GUI provides:
 - Like, comment, and share actions.
 - Posting text and all media files in a selected folder to one group.
 - Reposting one content file and media folder to every group URL in a selected links file.
+- Editing and saving the multi-group `content.txt` in the GUI, with photo previews and drag-and-drop for content, link, and image files.
 - A live status indicator showing the active action, verification wait, completion, and errors.
 - A Cancel task button for cooperative cancellation, including stopping before the next reposted group.
 
@@ -75,8 +81,10 @@ will find a compatible ChromeDriver when supported by the installed Selenium ver
 
 The post reader stores each post's URL, Facebook post ID (including IDs supplied through
 `multi_permalinks`), message, visible author, absolute timestamp, and capture time in the
-`posts` SQLite table. Facebook only exposes information rendered to the logged-in browser, so fields
-unavailable in the page are left empty. Re-reading the same URL updates its row.
+`posts` SQLite table, along with a category. New posts start as `Uncategorized`; categories can be
+assigned from the message content. Facebook only exposes information rendered to the logged-in
+browser, so fields unavailable in the page are left empty. Re-reading the same URL updates its row
+while preserving an existing category.
 Use the Group member URL field in the Post actions tab to start a user-post scrape. The selected range
 is saved to the same `posts` table.
 

@@ -48,6 +48,9 @@ tools/facebook_group_repost/data/content.txt
 tools/facebook_group_repost/data/Group Links/*.txt
 tools/facebook_group_repost/data/*.sqlite3
 tools/facebook_group_repost/data/*.sqlite3-*
+tools/discord_interaction/data/discord_token.txt
+tools/discord_interaction/data/cookies.json
+tools/discord_interaction/data/discord_auth.json
 
 # Optional local env files
 .env
