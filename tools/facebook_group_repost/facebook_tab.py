@@ -87,6 +87,8 @@ class FacebookTab(ttk.Frame):
         self._db_groups = []
         self._tree_urls = {}
         self._tree_group_ids = {}
+        self._tree_category_items = {}
+        self._category_open_state = {}
         self.image_dir = tk.StringVar(value=os.path.join(DATA_DIR, "Images"))
         self._media_paths = []
         self._preview_paths = []
@@ -313,6 +315,8 @@ class FacebookTab(ttk.Frame):
             "<<TreeviewSelect>>", lambda event: self._update_group_count()
         )
         self.group_tree.bind("<MouseWheel>", self._on_tree_mousewheel)
+        self.group_tree.bind("<<TreeviewOpen>>", self._on_category_toggle)
+        self.group_tree.bind("<<TreeviewClose>>", self._on_category_toggle)
         self.group_tree.bind("<Button-3>", self._show_group_context_menu)
         self.group_tree.bind(
             "<Control-c>", lambda event: self.copy_selected_group_links()
@@ -557,10 +561,16 @@ class FacebookTab(ttk.Frame):
     def _refresh_group_tree(self):
         if not hasattr(self, "group_tree"):
             return
+        for item, category in self._tree_category_items.items():
+            if self.group_tree.exists(item):
+                self._category_open_state[category] = bool(
+                    self.group_tree.item(item, "open")
+                )
         for item in self.group_tree.get_children(""):
             self.group_tree.delete(item)
         self._tree_urls = {}
         self._tree_group_ids = {}
+        self._tree_category_items = {}
         selected_category = self.group_filter.get()
         query = self.group_search.get().strip().casefold()
         show_hidden = self.show_hidden.get()
@@ -588,9 +598,10 @@ class FacebookTab(ttk.Frame):
                 "",
                 "end",
                 text=f"{category} ({len(rows)})",
-                open=True,
+                open=self._category_open_state.get(category, True),
                 tags=("category",),
             )
+            self._tree_category_items[parent] = category
             for row in rows:
                 name = row.get("name") or row.get("group_slug") or ""
                 url = row.get("url") or ""
@@ -693,16 +704,30 @@ class FacebookTab(ttk.Frame):
     def _expand_all(self):
         for parent in self.group_tree.get_children(""):
             self.group_tree.item(parent, open=True)
+            category = self._tree_category_items.get(parent)
+            if category:
+                self._category_open_state[category] = True
 
     def _collapse_all(self):
         for parent in self.group_tree.get_children(""):
             self.group_tree.item(parent, open=False)
+            category = self._tree_category_items.get(parent)
+            if category:
+                self._category_open_state[category] = False
+
+    def _on_category_toggle(self, _event):
+        item = self.group_tree.focus()
+        category = self._tree_category_items.get(item)
+        if category:
+            self._category_open_state[category] = bool(
+                self.group_tree.item(item, "open")
+            )
 
     def _on_tree_mousewheel(self, event):
         self.group_tree.yview_scroll(int(-1 * (event.delta / 120)), "units")
         return "break"
 
-    def _select_tree_urls(self, urls):
+    def _select_tree_urls(self, urls, reveal=True):
         targets = {url.casefold() for url in urls if url}
         if not targets:
             return
@@ -713,13 +738,18 @@ class FacebookTab(ttk.Frame):
         ]
         if not items:
             return
-        for item in items:
-            parent = self.group_tree.parent(item)
-            if parent:
-                self.group_tree.item(parent, open=True)
+        if reveal:
+            for item in items:
+                parent = self.group_tree.parent(item)
+                if parent:
+                    self.group_tree.item(parent, open=True)
+                    category = self._tree_category_items.get(parent)
+                    if category:
+                        self._category_open_state[category] = True
         self.group_tree.selection_set(*items)
-        self.group_tree.see(items[0])
-        self.group_tree.focus(items[0])
+        if reveal:
+            self.group_tree.see(items[0])
+            self.group_tree.focus(items[0])
 
     def _select_tree_url(self, url):
         self._select_tree_urls([url])
@@ -774,7 +804,7 @@ class FacebookTab(ttk.Frame):
         self.group_filter.set("All categories")
         self.group_search.set("")
         self._load_db_groups()
-        self._select_tree_urls(urls)
+        self._select_tree_urls(urls, reveal=False)
         message = f"Moved {len(rows)} group{'s' if len(rows) != 1 else ''} to {target}"
         self._log(message)
         self._set_status(message)
