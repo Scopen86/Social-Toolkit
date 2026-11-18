@@ -4,6 +4,7 @@ import json
 import os
 import queue
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -108,6 +109,8 @@ class FacebookTab(ttk.Frame):
         self._media_tiles = []
         self._media_drag_from = None
         self._media_drag_target = None
+        self.shutdown_when_done = tk.BooleanVar(value=False)
+        self._shutdown_requested = False
 
         self._build_ui()
         self.after(100, self._drain_log_queue)
@@ -175,6 +178,12 @@ class FacebookTab(ttk.Frame):
             toolbar, text="Cancel task", command=self.cancel_task, state="disabled"
         )
         self.cancel_button.pack(side="left", padx=6)
+        ttk.Checkbutton(
+            toolbar,
+            text="Shutdown PC when done",
+            variable=self.shutdown_when_done,
+            command=self._on_shutdown_toggle,
+        ).pack(side="left", padx=(6, 0))
         ttk.Label(toolbar, text="Status:").pack(side="left", padx=(18, 4))
         self.status_label = ttk.Label(toolbar, textvariable=self.status_text)
         self.status_label.pack(side="left")
@@ -1522,6 +1531,8 @@ class FacebookTab(ttk.Frame):
                     self._set_status(f"Queued: {remaining} task(s) waiting")
                 else:
                     self._set_cancel_state(False)
+                    if self._shutdown_requested:
+                        self.log_queue.put(("shutdown", ""))
 
     def _cancelled(self):
         return self.cancel_event.is_set()
@@ -1550,6 +1561,48 @@ class FacebookTab(ttk.Frame):
     def _set_cancel_state(self, enabled):
         self.log_queue.put(("cancel", "normal" if enabled else "disabled"))
 
+    def _on_shutdown_toggle(self):
+        enabled = self.shutdown_when_done.get()
+        if enabled and not messagebox.askyesno(
+            "Shutdown when done",
+            "When all queued tasks finish, shut down this PC in 60 seconds.\n"
+            "You can cancel with 'shutdown /a' during the countdown. Continue?",
+        ):
+            self.shutdown_when_done.set(False)
+            self._shutdown_requested = False
+            return
+        self._shutdown_requested = enabled
+        if enabled:
+            self._log("Shutdown after tasks is armed. Finish your queue, then it will count down.")
+        else:
+            self._log("Shutdown after tasks is disabled.")
+
+    def _shutdown_pc(self):
+        if not self._shutdown_requested:
+            return
+        self._shutdown_requested = False
+        self.shutdown_when_done.set(False)
+        message = (
+            "All tasks finished. Shutting down in 60 seconds "
+            "(run 'shutdown /a' to cancel)."
+        )
+        self._log(message)
+        self._set_status("Shutting down in 60 seconds")
+        try:
+            subprocess.run(
+                [
+                    "shutdown.exe",
+                    "/s",
+                    "/t",
+                    "60",
+                    "/c",
+                    "Social Toolkit finished; shutdown in 60s. Run shutdown /a to cancel.",
+                ],
+                check=False,
+            )
+        except Exception as exc:
+            self._log(f"ERROR: could not schedule shutdown: {exc}")
+
     def _drain_log_queue(self):
         while not self.log_queue.empty():
             message_type, message = self.log_queue.get_nowait()
@@ -1566,6 +1619,8 @@ class FacebookTab(ttk.Frame):
                 self.group_search.set("")
                 self._load_db_groups()
                 self._select_tree_url(message)
+            elif message_type == "shutdown":
+                self._shutdown_pc()
             else:
                 self.log_text.configure(state="normal")
                 self.log_text.insert("end", message + "\n")

@@ -51,7 +51,9 @@ it to the queue instead of interrupting or blocking the UI, and the status bar s
 tasks are waiting.
 
 Use **Cancel task** to stop the current operation and clear anything still queued. A Selenium
-browser action already in progress is allowed to finish safely.
+browser action already in progress is allowed to finish safely. Enable **Shutdown PC when done** to
+schedule a 60-second Windows shutdown after the queue empties; run `shutdown /a` during the countdown
+to cancel it.
 
 By default the script selects groups from the SQLite database. Use `--source file` with
 `--group_links_file` to read a plain URL list instead.

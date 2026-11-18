@@ -128,6 +128,7 @@ The GUI provides:
   item with its × button. Content, links, photos, and videos can also be added by drag-and-drop.
 - A live status indicator showing the active action, queued task count, cookie saves, completion, and errors. Actions queue instead of blocking, so you can line up consecutive jobs.
 - A Cancel task button for cooperative cancellation, clearing the queue and stopping before the next reposted group.
+- A **Shutdown PC when done** checkbox that schedules a 60-second Windows shutdown once the task queue empties (cancel it with `shutdown /a`).
 
 Start Chrome, log in, and keep the browser open while using the post or group tabs. Selenium Manager
 will find a compatible ChromeDriver when supported by the installed Selenium version.
