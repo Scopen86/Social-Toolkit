@@ -100,6 +100,10 @@ Start the combined Discord and Facebook interface from the repository root:
 python tools/social_toolkit_gui.py
 ```
 
+On Windows, double-click `run_gui.vbs` in the project root (or `tools/social_toolkit_gui.pyw`) to
+start the same GUI with no terminal window. `run_gui.vbs` uses `pyw.exe`; the `.pyw` file uses
+`pythonw.exe` through the Windows file association.
+
 The combined interface has separate Discord and Facebook tabs and opens on Facebook by default.
 The Facebook browser starts when you click **Start browser** in its tab. The Discord tab supports
 plain messages, configurable slash command interactions, and clicking enabled buttons discovered on

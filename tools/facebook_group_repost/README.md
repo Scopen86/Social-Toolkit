@@ -24,6 +24,9 @@ The repository also includes a GUI covering the same workflow and the shared lib
 python tools/social_toolkit_gui.py
 ```
 
+On Windows, double-click `run_gui.vbs` in the project root or `tools/social_toolkit_gui.pyw` to
+launch the GUI without a terminal window.
+
 The Multi-group repost tab loads groups from `tools/facebook_group_repost/data/facebook_groups.db`
 and displays them under their categories. Filter by category, search by name or URL, show hidden
 groups, and select individual groups or whole categories before reposting. Use **Copy link(s)** or
