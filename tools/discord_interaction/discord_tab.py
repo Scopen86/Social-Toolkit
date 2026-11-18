@@ -54,8 +54,34 @@ class DiscordTab(ttk.Frame):
         self._build()
 
     def _build(self) -> None:
-        outer = ttk.Frame(self, padding=12)
-        outer.pack(fill="both", expand=True)
+        container = ttk.Frame(self)
+        container.pack(fill="both", expand=True)
+        canvas = tk.Canvas(container, highlightthickness=0, borderwidth=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        outer = ttk.Frame(canvas, padding=12)
+
+        outer.bind(
+            "<Configure>",
+            lambda event, c=canvas: c.configure(scrollregion=c.bbox("all")),
+        )
+        window = canvas.create_window((0, 0), window=outer, anchor="nw")
+        canvas.bind(
+            "<Configure>",
+            lambda event, c=canvas, w=window: c.itemconfigure(w, width=event.width),
+        )
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        def _on_mousewheel(event, c=canvas):
+            if c.winfo_exists():
+                bbox = c.bbox("all")
+                if bbox and bbox[3] > c.winfo_height():
+                    c.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        container.bind("<Enter>", lambda _e, c=canvas, h=_on_mousewheel: c.bind_all("<MouseWheel>", h))
+        container.bind("<Leave>", lambda _e, c=canvas: c.unbind_all("<MouseWheel>"))
+
         outer.columnconfigure(0, weight=1)
         outer.rowconfigure(4, weight=1)
 
@@ -580,4 +606,4 @@ class DiscordTab(ttk.Frame):
 
     def _finish(self, text: str) -> None:
         self._show_output(text)
-        self.send_button.configure(state="normal")\n
+        self.send_button.configure(state="normal")

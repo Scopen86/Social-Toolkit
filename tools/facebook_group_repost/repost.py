@@ -8,11 +8,14 @@ from selenium.webdriver.chrome.options import Options
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 AUTH_DIR = os.path.join(DATA_DIR, "auth")
+DEFAULT_GROUPS_DB = os.path.join(DATA_DIR, "facebook_groups.db")
+DEFAULT_LINKS_FILE = os.path.join(DATA_DIR, "Group Links", "test.txt")
 
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
 from lib.facebook_engine import login, post_to_group
+from lib.groups_db import load_group_urls
 
 
 def repost_to_groups(driver, group_links, post_content, image_dir=None, log=print):
@@ -23,14 +26,31 @@ def repost_to_groups(driver, group_links, post_content, image_dir=None, log=prin
             if os.path.isfile(full_path):
                 image_paths.append(full_path)
 
-    for group_link in group_links:
-        post_to_group(
-            driver=driver,
-            group_link=group_link,
-            post_content=post_content,
-            image_paths=image_paths,
-            log=log,
-        )
+    total = len(group_links)
+    successes = 0
+    failures = 0
+    for index, group_link in enumerate(group_links, start=1):
+        log(f"Posting to group {index}/{total}: {group_link}")
+        try:
+            post_to_group(
+                driver=driver,
+                group_link=group_link,
+                post_content=post_content,
+                image_paths=image_paths,
+                log=log,
+            )
+            successes += 1
+        except Exception as exc:
+            failures += 1
+            log(f"ERROR posting to {group_link}: {exc}")
+            continue
+    log(f"Finished repost: {successes} succeeded, {failures} failed out of {total}.")
+
+
+def links_from_file(path):
+    with open(path, "r", encoding="utf-8") as file:
+        return [line.strip() for line in file.read().splitlines() if line.strip()]
+
 
 def main():
     parser = argparse.ArgumentParser(description="Facebook group repost script")
@@ -48,11 +68,38 @@ def main():
         help="Path to the cookie file",
     )
     parser.add_argument(
+        "--source",
+        choices=("db", "file"),
+        default="db",
+        help="Choose groups from the SQLite database (default) or a links file",
+    )
+    parser.add_argument(
+        "--groups_db",
+        nargs="?",
+        default=DEFAULT_GROUPS_DB,
+        help="Path to the Facebook groups SQLite database",
+    )
+    parser.add_argument(
+        "--group_category",
+        default=None,
+        help="Only repost to groups in this category",
+    )
+    parser.add_argument(
+        "--group_subcategory",
+        default=None,
+        help="Only repost to groups in this subcategory",
+    )
+    parser.add_argument(
+        "--managed_only",
+        action="store_true",
+        help="Only repost to groups you manage",
+    )
+    parser.add_argument(
         "-g",
         "--group_links_file",
         nargs="?",
-        default=os.path.join(DATA_DIR, "Group Links", "test.txt"),
-        help="Path to the group links file",
+        default=DEFAULT_LINKS_FILE,
+        help="Path to the group links file (used when --source=file)",
     )
     parser.add_argument(
         "-c",
@@ -69,15 +116,34 @@ def main():
     )
     args = parser.parse_args()
 
-    chrome_options = Options()
-    driver = webdriver.Chrome(options=chrome_options)
-    driver.maximize_window()
-
-    with open(args.group_links_file, "r", encoding="utf-8") as file:
-        group_links = [line.strip() for line in file.read().splitlines() if line.strip()]
+    if args.source == "db":
+        try:
+            group_links = load_group_urls(
+                args.groups_db,
+                category=args.group_category,
+                subcategory=args.group_subcategory,
+                managed_only=args.managed_only,
+            )
+        except FileNotFoundError as exc:
+            parser.error(str(exc))
+        print(f"Selected {len(group_links)} group(s) from {args.groups_db}")
+        if not group_links:
+            parser.error("No groups matched the database filters.")
+    else:
+        try:
+            group_links = links_from_file(args.group_links_file)
+        except OSError as exc:
+            parser.error(str(exc))
+        print(f"Loaded {len(group_links)} group link(s) from {args.group_links_file}")
+        if not group_links:
+            parser.error("The group links file is empty.")
 
     with open(args.content_file, "r", encoding="utf-8") as file:
         post_content = file.read()
+
+    chrome_options = Options()
+    driver = webdriver.Chrome(options=chrome_options)
+    driver.maximize_window()
 
     login(
         driver=driver,
@@ -99,4 +165,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

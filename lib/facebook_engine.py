@@ -17,6 +17,21 @@ def locate_element(driver, selectors, by=By.CSS_SELECTOR):
             return enabled_elements[0]
     return None
 
+def save_cookies(driver, cookies_file, log=print):
+    """Save the current browser cookies so they can be reused for login."""
+    if not cookies_file:
+        raise ValueError("No cookies file path configured.")
+    cookies_file = os.path.abspath(os.path.expanduser(cookies_file))
+    cookies_dir = os.path.dirname(cookies_file)
+    if cookies_dir:
+        os.makedirs(cookies_dir, exist_ok=True)
+    cookies = driver.get_cookies()
+    with open(cookies_file, "w", encoding="utf-8") as file:
+        json.dump(cookies, file, ensure_ascii=False, indent=2)
+    log(f"Saved {len(cookies)} cookies to: {cookies_file}")
+    return cookies_file
+
+
 def login(
     driver,
     log=print,
@@ -24,6 +39,7 @@ def login(
     credential_file="facebook_credentials.txt",
     cookies_file="facebook_cookies.json",
     wait_for_verification=None,
+    fallback_to_credentials=True,
 ):
 
     driver.get("https://www.facebook.com/")
@@ -53,8 +69,14 @@ def login(
                 log("Facebook login completed using saved cookies.")
                 return
 
+            if not fallback_to_credentials:
+                log("Saved cookies are not logged in. Log in manually in Chrome, then click Save cookies.")
+                return
             log("Saved cookies did not complete login; falling back to credentials.")
         else:
+            if not fallback_to_credentials:
+                log(f"Cookie file not found: {cookies_file}. Log in manually in Chrome, then click Save cookies.")
+                return
             log(f"Cookie file not found: {cookies_file}. Falling back to credentials.")
 
     if not os.path.exists(credential_file):
@@ -99,14 +121,7 @@ def login(
         )
 
     if cookies_file:
-        cookies_dir = os.path.dirname(cookies_file)
-        if cookies_dir:
-            os.makedirs(cookies_dir, exist_ok=True)
-
-        with open(cookies_file, "w", encoding="utf-8") as file:
-            json.dump(driver.get_cookies(), file, ensure_ascii=False, indent=2)
-
-        log(f"Saved login cookies to: {cookies_file}")
+        save_cookies(driver, cookies_file, log)
 
     log("Facebook login completed.")
 

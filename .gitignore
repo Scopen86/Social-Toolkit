@@ -42,12 +42,17 @@ Thumbs.db
 *.log
 
 # Local secrets and runtime data (do not commit)
+Facebook.html
 tools/facebook_group_repost/data/auth/
 tools/facebook_group_repost/data/Images/
 tools/facebook_group_repost/data/content.txt
 tools/facebook_group_repost/data/Group Links/*.txt
-tools/facebook_group_repost/data/*.sqlite3
-tools/facebook_group_repost/data/*.sqlite3-*
+tools/facebook_group_repost/data/*.db
+tools/facebook_group_repost/data/*.db-*
+tools/facebook_group_repost/data/*.db.bak-*
+tools/facebook_group_repost/data/selected_groups.json
+tools/facebook_group_repost/data/group_categories.json
+tools/facebook_group_repost/data/group_category_review.json
 tools/discord_interaction/data/discord_token.txt
 tools/discord_interaction/data/cookies.json
 tools/discord_interaction/data/discord_auth.json
