@@ -39,10 +39,11 @@ option) to permanently delete selected groups and their saved category choices. 
 Chrome, then click **Save cookies** to store the session for **Login (cookies)**; the status bar
 reports when the cookies were saved, alongside the other action statuses.
 
-Drag photos or videos onto the media preview, or point the media folder at a directory containing
-them, and they are uploaded with the post. The numbered upload-order list shows every file with a
-thumbnail: click a row to preview it and drag rows (or use **Move to first/up/down/last**) to change
-the order. Videos show a summary instead of a rendered frame.
+Drag photos or videos onto the media grid, or point the media folder at a directory containing
+them, and they are uploaded with the post. The numbered thumbnail grid follows the upload order:
+click a tile to preview it, drag tiles onto each other to reorder freely, and use the × on any tile
+(or **Remove selected**) to delete just that item. A **＋ Add** tile and **Add files** button append
+more media. Videos show a summary instead of a rendered frame.
 
 The GUI status bar shows the current operation, including which group is being processed during a
 multi-group repost. Actions run through a queue: clicking another action while one is running adds

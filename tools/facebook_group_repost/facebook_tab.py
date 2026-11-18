@@ -105,8 +105,9 @@ class FacebookTab(ttk.Frame):
         self._preview_index = 0
         self._preview_photo = None
         self._thumbnail_photos = []
-        self._syncing_media_selection = False
+        self._media_tiles = []
         self._media_drag_from = None
+        self._media_drag_target = None
 
         self._build_ui()
         self.after(100, self._drain_log_queue)
@@ -440,97 +441,68 @@ class FacebookTab(ttk.Frame):
         self._path_row(frame, 3, "Media folder:", self.image_dir, choose_directory=True)
         preview_frame = ttk.LabelFrame(
             frame,
-            text="Media order & preview · drop photos or videos onto the preview",
+            text="Media · drag to reorder, × to remove",
             padding=6,
         )
         preview_frame.grid(row=4, column=0, columnspan=3, sticky="ew", padx=3, pady=4)
-        self.photo_preview = ttk.Label(
-            preview_frame,
+
+        header = ttk.Frame(preview_frame)
+        header.pack(fill="x")
+        ttk.Label(header, text="Upload order:").pack(side="left")
+        ttk.Label(
+            header,
+            text="Drag thumbnails to reorder · click × to remove · drop files here to add",
+            foreground="#666666",
+        ).pack(side="left", padx=8)
+        self.preview_counter = ttk.Label(header, text="0 / 0")
+        self.preview_counter.pack(side="right")
+
+        body = ttk.Frame(preview_frame)
+        body.pack(fill="x", pady=(6, 0))
+
+        self.media_grid = tk.Frame(body, bg="#ffffff", padx=4, pady=4)
+        self.media_grid.pack(side="left", fill="both", expand=True)
+        self._register_drop_target(self.media_grid, self._drop_media)
+
+        side = ttk.Frame(body, width=250, height=190)
+        side.pack(side="right", fill="y", padx=(10, 0))
+        side.pack_propagate(False)
+        self.photo_preview = tk.Label(
+            side,
             text="No media selected. Choose a folder or drop photos and videos here.",
             anchor="center",
+            justify="center",
+            wraplength=230,
             relief="groove",
-            width=60,
+            bg="#f5f6f7",
         )
-        self.photo_preview.pack(fill="both", expand=True, ipady=18)
+        self.photo_preview.pack(fill="both", expand=True, ipady=8)
         self._register_drop_target(self.photo_preview, self._drop_media)
-
-        preview_controls = ttk.Frame(preview_frame)
-        preview_controls.pack(fill="x", pady=(5, 0))
+        self.preview_source = ttk.Label(side, text="", wraplength=240)
+        self.preview_source.pack(fill="x", pady=(4, 0))
+        nav = ttk.Frame(side)
+        nav.pack(fill="x", pady=(4, 0))
         self.preview_previous = ttk.Button(
-            preview_controls, text="Previous", command=lambda: self._step_preview(-1), state="disabled"
+            nav, text="◀", width=3,
+            command=lambda: self._step_preview(-1), state="disabled",
         )
         self.preview_previous.pack(side="left")
-        self.preview_counter = ttk.Label(preview_controls, text="0 / 0")
-        self.preview_counter.pack(side="left", padx=10)
         self.preview_next = ttk.Button(
-            preview_controls, text="Next", command=lambda: self._step_preview(1), state="disabled"
+            nav, text="▶", width=3,
+            command=lambda: self._step_preview(1), state="disabled",
         )
-        self.preview_next.pack(side="left")
-        ttk.Button(preview_controls, text="Add files", command=self.add_media_files).pack(
-            side="left", padx=(12, 0)
-        )
-        self.preview_source = ttk.Label(preview_controls, text="")
-        self.preview_source.pack(side="right")
+        self.preview_next.pack(side="right")
 
-        order_frame = ttk.Frame(preview_frame)
-        order_frame.pack(fill="x", pady=(8, 0))
-        ttk.Label(
-            order_frame, text="Upload order (click a row to preview, drag rows to reorder):"
-        ).pack(anchor="w")
-        list_frame = ttk.Frame(order_frame)
-        list_frame.pack(fill="x", pady=(3, 0))
-        self.media_tree = ttk.Treeview(
-            list_frame,
-            columns=("order", "name"),
-            show="tree headings",
-            selectmode="browse",
-            height=5,
+        controls = ttk.Frame(preview_frame)
+        controls.pack(fill="x", pady=(8, 0))
+        ttk.Button(controls, text="Add files", command=self.add_media_files).pack(
+            side="left"
         )
-        self.media_tree.heading("#0", text="")
-        self.media_tree.column("#0", width=46, minwidth=46, stretch=False)
-        self.media_tree.heading("order", text="#")
-        self.media_tree.column(
-            "order", width=40, minwidth=36, anchor="center", stretch=False
-        )
-        self.media_tree.heading("name", text="File")
-        self.media_tree.column("name", width=340, minwidth=120, stretch=True)
-        media_scroll = ttk.Scrollbar(
-            list_frame, orient="vertical", command=self.media_tree.yview
-        )
-        self.media_tree.configure(yscrollcommand=media_scroll.set)
-        self.media_tree.pack(side="left", fill="both", expand=True)
-        media_scroll.pack(side="right", fill="y")
-        self.media_tree.bind("<<TreeviewSelect>>", self._on_media_tree_select)
-        self.media_tree.bind("<ButtonPress-1>", self._on_media_drag_start)
-        self.media_tree.bind("<B1-Motion>", self._on_media_drag_motion)
-        self.media_tree.bind("<ButtonRelease-1>", self._on_media_drag_release)
-        self.media_tree.bind("<MouseWheel>", self._on_media_tree_mousewheel)
-
-        order_controls = ttk.Frame(order_frame)
-        order_controls.pack(fill="x", pady=(6, 0))
         ttk.Button(
-            order_controls, text="Move to first", command=lambda: self._move_media_to(0)
-        ).pack(side="left")
-        ttk.Button(
-            order_controls,
-            text="Move up",
-            command=lambda: self._move_preview_media(-1),
-        ).pack(side="left", padx=(6, 0))
-        ttk.Button(
-            order_controls,
-            text="Move down",
-            command=lambda: self._move_preview_media(1),
-        ).pack(side="left", padx=(6, 0))
-        ttk.Button(
-            order_controls,
-            text="Move to last",
-            command=lambda: self._move_media_to(len(self._media_paths) - 1),
-        ).pack(side="left", padx=(6, 0))
-        ttk.Button(
-            order_controls, text="Remove", command=self._remove_preview_media
-        ).pack(side="left", padx=(12, 0))
-        ttk.Button(order_controls, text="Clear", command=self._clear_media).pack(
-            side="left", padx=(6, 0)
+            controls, text="Remove selected", command=self._remove_preview_media
+        ).pack(side="left", padx=6)
+        ttk.Button(controls, text="Clear all", command=self._clear_media).pack(
+            side="left", padx=6
         )
 
         ttk.Button(frame, text="Repost to selected groups", command=self.repost).grid(
@@ -1203,12 +1175,7 @@ class FacebookTab(ttk.Frame):
         self._log(f"Moved media from position {source + 1} to {target + 1}.")
 
     def _remove_preview_media(self):
-        if not self._media_paths or self._preview_index >= len(self._media_paths):
-            return
-        del self._media_paths[self._preview_index]
-        if self._preview_index >= len(self._media_paths):
-            self._preview_index = max(0, len(self._media_paths) - 1)
-        self._refresh_media_preview(keep_index=True)
+        self._remove_media_at(self._preview_index)
 
     def _clear_media(self):
         self._media_paths = []
@@ -1228,7 +1195,7 @@ class FacebookTab(ttk.Frame):
             self._preview_index = min(self._preview_index, len(self._preview_paths) - 1)
         else:
             self._preview_index = 0
-        self._refresh_media_list()
+        self._refresh_media_grid()
         self._show_preview_media()
 
     def _make_thumbnail(self, path):
@@ -1236,91 +1203,178 @@ class FacebookTab(ttk.Frame):
             return None
         try:
             with Image.open(path) as image:
-                image.thumbnail((36, 36), Image.Resampling.LANCZOS)
+                image.thumbnail((76, 76), Image.Resampling.LANCZOS)
                 return ImageTk.PhotoImage(image.copy())
         except Exception:
             return None
 
-    def _refresh_media_list(self):
-        if not hasattr(self, "media_tree"):
+    def _refresh_media_grid(self):
+        if not hasattr(self, "media_grid"):
             return
-        for item in self.media_tree.get_children(""):
-            self.media_tree.delete(item)
+        for child in self.media_grid.winfo_children():
+            child.destroy()
+        self._media_tiles = []
         self._thumbnail_photos = []
-        for index, path in enumerate(self._media_paths, start=1):
+        columns = 5
+
+        for index, path in enumerate(self._media_paths):
+            tile = tk.Frame(
+                self.media_grid,
+                bg="#ffffff",
+                relief="ridge",
+                bd=1,
+                highlightthickness=0,
+            )
+            tile.grid(row=index // columns, column=index % columns, padx=3, pady=3)
+            tile._media_index = index
+            self._media_tiles.append(tile)
+
             photo = self._make_thumbnail(path)
             if photo is not None:
                 self._thumbnail_photos.append(photo)
-            self.media_tree.insert(
-                "",
-                "end",
-                image=photo if photo is not None else "",
-                text="🎬" if self._is_video(path) else "",
-                values=(index, os.path.basename(path)),
+                content = tk.Label(tile, image=photo, bg="#ffffff", cursor="hand2")
+            else:
+                content = tk.Label(
+                    tile,
+                    text="🎬\nvideo",
+                    bg="#ffffff",
+                    fg="#555555",
+                    width=9,
+                    height=4,
+                    cursor="hand2",
+                )
+            content._media_index = index
+            content.pack(padx=2, pady=2)
+
+            badge = tk.Label(
+                tile,
+                text=str(index + 1),
+                bg="#1877f2",
+                fg="white",
+                font=("Segoe UI", 8, "bold"),
+                padx=3,
+            )
+            badge.place(x=2, y=2)
+            badge._media_index = index
+
+            remove = tk.Button(
+                tile,
+                text="×",
+                command=lambda value=index: self._remove_media_at(value),
+                width=2,
+                height=1,
+                relief="flat",
+                bg="#333333",
+                fg="white",
+                activebackground="#e41e3f",
+                activeforeground="white",
+                cursor="hand2",
+                font=("Segoe UI", 9, "bold"),
+            )
+            remove.place(relx=1.0, x=-2, y=2, anchor="ne")
+            remove._is_remove = True
+
+            for widget in (tile, content, badge):
+                widget.bind(
+                    "<ButtonPress-1>",
+                    lambda event, value=index: self._on_media_drag_start(event, value),
+                )
+                widget.bind("<B1-Motion>", self._on_media_drag_motion)
+                widget.bind("<ButtonRelease-1>", self._on_media_drag_release)
+
+        add_index = len(self._media_paths)
+        add_tile = tk.Frame(self.media_grid, bg="#ffffff", relief="groove", bd=1)
+        add_tile.grid(
+            row=add_index // columns, column=add_index % columns, padx=3, pady=3
+        )
+        add_tile._media_index = add_index
+        add_label = tk.Label(
+            add_tile,
+            text="＋\nAdd",
+            bg="#ffffff",
+            fg="#1877f2",
+            width=10,
+            height=4,
+            cursor="hand2",
+            font=("Segoe UI", 10, "bold"),
+        )
+        add_label._media_index = add_index
+        add_label.pack(padx=2, pady=2)
+        add_label.bind("<Button-1>", lambda event: self.add_media_files())
+
+    def _media_index_from_point(self, x_root, y_root):
+        widget = self.winfo_containing(x_root, y_root)
+        while widget is not None:
+            if getattr(widget, "_is_remove", False):
+                widget = widget.master
+                continue
+            index = getattr(widget, "_media_index", None)
+            if index is not None:
+                return index
+            widget = widget.master
+        return None
+
+    def _highlight_media_tile(self, index):
+        for position, tile in enumerate(self._media_tiles):
+            if tile.winfo_exists():
+                tile.configure(relief="solid" if position == index else "ridge")
+
+    def _sync_media_grid_selection(self):
+        if not hasattr(self, "media_grid"):
+            return
+        for index, tile in enumerate(self._media_tiles):
+            if not tile.winfo_exists():
+                continue
+            selected = index == self._preview_index
+            tile.configure(
+                highlightthickness=2 if selected else 0,
+                highlightbackground="#1877f2" if selected else "#ffffff",
             )
 
-    def _sync_media_tree_selection(self):
-        if not hasattr(self, "media_tree"):
-            return
-        children = self.media_tree.get_children("")
-        self._syncing_media_selection = True
-        try:
-            selection = self.media_tree.selection()
-            if selection:
-                self.media_tree.selection_remove(*selection)
-            if children and 0 <= self._preview_index < len(children):
-                item = children[self._preview_index]
-                self.media_tree.selection_set(item)
-                self.media_tree.see(item)
-        finally:
-            self._syncing_media_selection = False
-
-    def _on_media_tree_select(self, _event):
-        if self._syncing_media_selection:
-            return
-        selection = self.media_tree.selection()
-        if not selection:
-            return
-        index = self.media_tree.index(selection[0])
-        if index == self._preview_index:
-            return
+    def _on_media_drag_start(self, event, index):
+        self._media_drag_from = index
+        self._media_drag_target = None
         self._preview_index = index
         self._show_preview_media()
-
-    def _on_media_drag_start(self, event):
-        item = self.media_tree.identify_row(event.y)
-        if not item:
-            return
-        self.media_tree.selection_set(item)
-        self._on_media_tree_select(None)
-        self._media_drag_from = self.media_tree.index(item)
 
     def _on_media_drag_motion(self, event):
         if self._media_drag_from is None:
             return
-        item = self.media_tree.identify_row(event.y)
-        if item:
-            self.media_tree.see(item)
+        target = self._media_index_from_point(event.x_root, event.y_root)
+        if target != self._media_drag_target:
+            self._highlight_media_tile(target)
+            self._media_drag_target = target
 
     def _on_media_drag_release(self, event):
         if self._media_drag_from is None:
             return
         source = self._media_drag_from
         self._media_drag_from = None
-        item = self.media_tree.identify_row(event.y)
-        target = self.media_tree.index(item) if item else source
-        if target != source:
+        target = self._media_index_from_point(event.x_root, event.y_root)
+        self._highlight_media_tile(None)
+        self._media_drag_target = None
+        if target is None or target == source:
             self._preview_index = source
-            self._move_media_to(target)
+            self._show_preview_media()
+            return
+        self._preview_index = source
+        self._move_media_to(target)
 
-    def _on_media_tree_mousewheel(self, event):
-        self.media_tree.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        return "break"
+    def _remove_media_at(self, index):
+        if not (0 <= index < len(self._media_paths)):
+            return
+        del self._media_paths[index]
+        if not self._media_paths:
+            self._preview_index = 0
+        elif self._preview_index >= len(self._media_paths):
+            self._preview_index = len(self._media_paths) - 1
+        self._refresh_media_preview(keep_index=True)
+        self._log(f"Removed media #{index + 1} from the upload order.")
 
     def _show_preview_media(self):
         count = len(self._preview_paths)
         self._preview_index = max(0, min(self._preview_index, count - 1)) if count else 0
-        self._sync_media_tree_selection()
+        self._sync_media_grid_selection()
         if not count:
             self._preview_photo = None
             self.photo_preview.configure(
