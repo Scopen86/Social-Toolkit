@@ -1,5 +1,6 @@
 """Tkinter GUI for the Facebook Selenium automation library."""
 
+import json
 import os
 import queue
 import re
@@ -18,8 +19,8 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
-from lib.group_classifier import classify_consolidated
-from lib.groups_db import load_groups, upsert_group
+from lib.group_classifier import CONSOLIDATED_CATEGORIES, classify_consolidated
+from lib.groups_db import load_groups, set_groups_category, upsert_group
 from lib.facebook_engine import (
     comment_on_post,
     extract_post_details,
@@ -36,6 +37,7 @@ from lib.facebook_engine import (
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 AUTH_DIR = os.path.join(DATA_DIR, "auth")
+CATEGORY_OVERRIDES_FILE = os.path.join(DATA_DIR, "group_categories.json")
 
 IMAGE_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tif", ".tiff"
@@ -79,13 +81,20 @@ class FacebookTab(ttk.Frame):
         self.group_filter = tk.StringVar(value="All categories")
         self.group_search = tk.StringVar()
         self.show_hidden = tk.BooleanVar(value=False)
+        self.move_category = tk.StringVar(
+            value=CONSOLIDATED_CATEGORIES[-1] if CONSOLIDATED_CATEGORIES else ""
+        )
         self._db_groups = []
         self._tree_urls = {}
+        self._tree_group_ids = {}
         self.image_dir = tk.StringVar(value=os.path.join(DATA_DIR, "Images"))
         self._media_paths = []
         self._preview_paths = []
         self._preview_index = 0
         self._preview_photo = None
+        self._thumbnail_photos = []
+        self._syncing_media_selection = False
+        self._media_drag_from = None
 
         self._build_ui()
         self.after(100, self._drain_log_queue)
@@ -304,6 +313,13 @@ class FacebookTab(ttk.Frame):
             "<<TreeviewSelect>>", lambda event: self._update_group_count()
         )
         self.group_tree.bind("<MouseWheel>", self._on_tree_mousewheel)
+        self.group_tree.bind("<Button-3>", self._show_group_context_menu)
+        self.group_context_menu = tk.Menu(self, tearoff=0)
+        for category in CONSOLIDATED_CATEGORIES:
+            self.group_context_menu.add_command(
+                label=f"Move to {category}",
+                command=lambda value=category: self.move_selected_groups(value),
+            )
 
         actions = ttk.Frame(links_frame)
         actions.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(6, 0))
@@ -320,8 +336,28 @@ class FacebookTab(ttk.Frame):
             side="left", padx=(6, 0)
         )
 
+        move_row = ttk.Frame(links_frame)
+        move_row.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(6, 0))
+        ttk.Label(move_row, text="Move selected to:").pack(side="left")
+        self.move_target = ttk.Combobox(
+            move_row,
+            textvariable=self.move_category,
+            values=CONSOLIDATED_CATEGORIES,
+            state="readonly",
+            width=24,
+        )
+        self.move_target.pack(side="left", padx=6)
+        ttk.Button(
+            move_row, text="Move groups", command=self.move_selected_groups
+        ).pack(side="left")
+        ttk.Label(
+            move_row,
+            text="(or right-click a group/category)",
+            foreground="#777777",
+        ).pack(side="left", padx=6)
+
         add_row = ttk.Frame(links_frame)
-        add_row.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(6, 0))
+        add_row.grid(row=5, column=0, columnspan=4, sticky="ew", pady=(6, 0))
         ttk.Label(add_row, text="Add group by link:").pack(side="left")
         self.group_link_input = tk.StringVar()
         group_link_entry = ttk.Entry(add_row, textvariable=self.group_link_input)
@@ -333,13 +369,13 @@ class FacebookTab(ttk.Frame):
 
         self.group_count_text = tk.StringVar(value="0 selected")
         ttk.Label(links_frame, textvariable=self.group_count_text).grid(
-            row=5, column=0, columnspan=4, sticky="w", pady=(6, 0)
+            row=6, column=0, columnspan=4, sticky="w", pady=(6, 0)
         )
         ttk.Label(
             links_frame,
-            text="Select one or more groups. Added links are fetched from Facebook and stored in the database.",
+            text="Select one or more groups. Move changes the database and saved category choices; added links are fetched from Facebook.",
             foreground="#555555",
-        ).grid(row=6, column=0, columnspan=4, sticky="w", pady=(2, 0))
+        ).grid(row=7, column=0, columnspan=4, sticky="w", pady=(2, 0))
 
         links_frame.columnconfigure(1, weight=1)
         links_frame.rowconfigure(2, weight=1)
@@ -361,7 +397,9 @@ class FacebookTab(ttk.Frame):
 
         self._path_row(frame, 3, "Media folder:", self.image_dir, choose_directory=True)
         preview_frame = ttk.LabelFrame(
-            frame, text="Media preview · drag photos or videos here", padding=6
+            frame,
+            text="Media order & preview · drop photos or videos onto the preview",
+            padding=6,
         )
         preview_frame.grid(row=4, column=0, columnspan=3, sticky="ew", padx=3, pady=4)
         self.photo_preview = ttk.Label(
@@ -371,8 +409,9 @@ class FacebookTab(ttk.Frame):
             relief="groove",
             width=60,
         )
-        self.photo_preview.pack(fill="both", expand=True, ipady=30)
+        self.photo_preview.pack(fill="both", expand=True, ipady=18)
         self._register_drop_target(self.photo_preview, self._drop_media)
+
         preview_controls = ttk.Frame(preview_frame)
         preview_controls.pack(fill="x", pady=(5, 0))
         self.preview_previous = ttk.Button(
@@ -388,20 +427,69 @@ class FacebookTab(ttk.Frame):
         ttk.Button(preview_controls, text="Add files", command=self.add_media_files).pack(
             side="left", padx=(12, 0)
         )
-        ttk.Button(preview_controls, text="Move up", command=lambda: self._move_preview_media(-1)).pack(
-            side="left", padx=(6, 0)
-        )
-        ttk.Button(preview_controls, text="Move down", command=lambda: self._move_preview_media(1)).pack(
-            side="left", padx=(6, 0)
-        )
-        ttk.Button(preview_controls, text="Remove", command=self._remove_preview_media).pack(
-            side="left", padx=(6, 0)
-        )
-        ttk.Button(preview_controls, text="Clear", command=self._clear_media).pack(
-            side="left", padx=(6, 0)
-        )
         self.preview_source = ttk.Label(preview_controls, text="")
         self.preview_source.pack(side="right")
+
+        order_frame = ttk.Frame(preview_frame)
+        order_frame.pack(fill="x", pady=(8, 0))
+        ttk.Label(
+            order_frame, text="Upload order (click a row to preview, drag rows to reorder):"
+        ).pack(anchor="w")
+        list_frame = ttk.Frame(order_frame)
+        list_frame.pack(fill="x", pady=(3, 0))
+        self.media_tree = ttk.Treeview(
+            list_frame,
+            columns=("order", "name"),
+            show="tree headings",
+            selectmode="browse",
+            height=5,
+        )
+        self.media_tree.heading("#0", text="")
+        self.media_tree.column("#0", width=46, minwidth=46, stretch=False)
+        self.media_tree.heading("order", text="#")
+        self.media_tree.column(
+            "order", width=40, minwidth=36, anchor="center", stretch=False
+        )
+        self.media_tree.heading("name", text="File")
+        self.media_tree.column("name", width=340, minwidth=120, stretch=True)
+        media_scroll = ttk.Scrollbar(
+            list_frame, orient="vertical", command=self.media_tree.yview
+        )
+        self.media_tree.configure(yscrollcommand=media_scroll.set)
+        self.media_tree.pack(side="left", fill="both", expand=True)
+        media_scroll.pack(side="right", fill="y")
+        self.media_tree.bind("<<TreeviewSelect>>", self._on_media_tree_select)
+        self.media_tree.bind("<ButtonPress-1>", self._on_media_drag_start)
+        self.media_tree.bind("<B1-Motion>", self._on_media_drag_motion)
+        self.media_tree.bind("<ButtonRelease-1>", self._on_media_drag_release)
+        self.media_tree.bind("<MouseWheel>", self._on_media_tree_mousewheel)
+
+        order_controls = ttk.Frame(order_frame)
+        order_controls.pack(fill="x", pady=(6, 0))
+        ttk.Button(
+            order_controls, text="Move to first", command=lambda: self._move_media_to(0)
+        ).pack(side="left")
+        ttk.Button(
+            order_controls,
+            text="Move up",
+            command=lambda: self._move_preview_media(-1),
+        ).pack(side="left", padx=(6, 0))
+        ttk.Button(
+            order_controls,
+            text="Move down",
+            command=lambda: self._move_preview_media(1),
+        ).pack(side="left", padx=(6, 0))
+        ttk.Button(
+            order_controls,
+            text="Move to last",
+            command=lambda: self._move_media_to(len(self._media_paths) - 1),
+        ).pack(side="left", padx=(6, 0))
+        ttk.Button(
+            order_controls, text="Remove", command=self._remove_preview_media
+        ).pack(side="left", padx=(12, 0))
+        ttk.Button(order_controls, text="Clear", command=self._clear_media).pack(
+            side="left", padx=(6, 0)
+        )
 
         ttk.Button(frame, text="Repost to selected groups", command=self.repost).grid(
             row=5, column=1, sticky="w", pady=8
@@ -462,6 +550,7 @@ class FacebookTab(ttk.Frame):
         for item in self.group_tree.get_children(""):
             self.group_tree.delete(item)
         self._tree_urls = {}
+        self._tree_group_ids = {}
         selected_category = self.group_filter.get()
         query = self.group_search.get().strip().casefold()
         show_hidden = self.show_hidden.get()
@@ -511,22 +600,41 @@ class FacebookTab(ttk.Frame):
                     tags=tuple(tags),
                 )
                 self._tree_urls[item] = url
+                self._tree_group_ids[item] = row.get("id")
         self._update_group_count()
 
-    def _selected_group_urls(self):
+    def _selected_tree_items(self):
         if not hasattr(self, "group_tree"):
             return []
-        urls = []
+        items = []
         seen = set()
         for item in self.group_tree.selection():
             children = self.group_tree.get_children(item)
             for child in children or [item]:
-                url = self._tree_urls.get(child) or ""
-                key = url.casefold()
-                if url and key not in seen:
-                    seen.add(key)
-                    urls.append(url)
+                if child not in seen:
+                    seen.add(child)
+                    items.append(child)
+        return items
+
+    def _selected_group_urls(self):
+        urls = []
+        seen = set()
+        for item in self._selected_tree_items():
+            url = self._tree_urls.get(item) or ""
+            if url and url.casefold() not in seen:
+                seen.add(url.casefold())
+                urls.append(url)
         return urls
+
+    def _selected_group_ids(self):
+        ids = []
+        seen = set()
+        for item in self._selected_tree_items():
+            group_id = self._tree_group_ids.get(item)
+            if group_id is not None and group_id not in seen:
+                seen.add(group_id)
+                ids.append(group_id)
+        return ids
 
     def _update_group_count(self):
         if not hasattr(self, "group_count_text"):
@@ -561,18 +669,108 @@ class FacebookTab(ttk.Frame):
         self.group_tree.yview_scroll(int(-1 * (event.delta / 120)), "units")
         return "break"
 
-    def _select_tree_url(self, url):
-        target = (url or "").casefold()
-        for item, item_url in self._tree_urls.items():
-            if item_url.casefold() != target:
-                continue
+    def _select_tree_urls(self, urls):
+        targets = {url.casefold() for url in urls if url}
+        if not targets:
+            return
+        items = [
+            item
+            for item, url in self._tree_urls.items()
+            if url and url.casefold() in targets
+        ]
+        if not items:
+            return
+        for item in items:
             parent = self.group_tree.parent(item)
             if parent:
                 self.group_tree.item(parent, open=True)
+        self.group_tree.selection_set(*items)
+        self.group_tree.see(items[0])
+        self.group_tree.focus(items[0])
+
+    def _select_tree_url(self, url):
+        self._select_tree_urls([url])
+
+    def _show_group_context_menu(self, event):
+        item = self.group_tree.identify_row(event.y)
+        if not item:
+            return
+        if item not in self.group_tree.selection():
             self.group_tree.selection_set(item)
-            self.group_tree.see(item)
-            self.group_tree.focus(item)
-            break
+            self._update_group_count()
+        self.group_context_menu.post(event.x_root, event.y_root)
+
+    def move_selected_groups(self, target=None, confirm=True):
+        """Move selected groups to ``target`` (or the chosen category)."""
+        target = (target or self.move_category.get()).strip()
+        if not target or target not in CONSOLIDATED_CATEGORIES:
+            messagebox.showerror(
+                "Move groups", "Choose a valid target category first."
+            )
+            return
+        ids = self._selected_group_ids()
+        if not ids:
+            messagebox.showinfo(
+                "Move groups", "Select one or more groups from the list first."
+            )
+            return
+        rows = [row for row in self._db_groups if row.get("id") in ids]
+        rows = [row for row in rows if (row.get("category") or "Other") != target]
+        if not rows:
+            messagebox.showinfo(
+                "Move groups", "The selected groups are already in that category."
+            )
+            return
+        if confirm and not messagebox.askyesno(
+            "Move groups",
+            f"Move {len(rows)} selected group{'s' if len(rows) != 1 else ''} "
+            f"to {target}?",
+        ):
+            return
+
+        db_path = self.groups_db.get().strip()
+        try:
+            set_groups_category(db_path, [row["id"] for row in rows], target)
+            for row in rows:
+                self._save_category_override(row, target)
+        except Exception as exc:
+            messagebox.showerror("Could not move groups", str(exc))
+            return
+
+        urls = [row.get("url") or "" for row in rows]
+        self.group_filter.set("All categories")
+        self.group_search.set("")
+        self._load_db_groups()
+        self._select_tree_urls(urls)
+        message = f"Moved {len(rows)} group{'s' if len(rows) != 1 else ''} to {target}"
+        self._log(message)
+        self._set_status(message)
+
+    def _save_category_override(self, row, category):
+        """Persist a manual move so future extraction keeps the choice."""
+        slug = str(row.get("group_slug") or "").strip()
+        if not slug:
+            return
+        try:
+            try:
+                with open(CATEGORY_OVERRIDES_FILE, "r", encoding="utf-8") as file:
+                    data = json.load(file)
+            except FileNotFoundError:
+                data = {}
+            if not isinstance(data, dict):
+                data = {}
+            groups = data.get("groups")
+            if isinstance(groups, dict):
+                data = groups
+            data[slug] = {
+                "name": row.get("name") or "",
+                "category": category,
+                "subcategory": row.get("subcategory") or "",
+            }
+            with open(CATEGORY_OVERRIDES_FILE, "w", encoding="utf-8") as file:
+                json.dump(data, file, ensure_ascii=False, indent=2, sort_keys=True)
+        except (OSError, ValueError) as exc:
+            self._log(f"Could not save category override: {exc}")
 
     def add_group_link(self):
         raw = self.group_link_input.get().strip()
@@ -808,16 +1006,21 @@ class FacebookTab(ttk.Frame):
     def _move_preview_media(self, direction):
         if not self._media_paths:
             return
-        index = self._preview_index
-        new_index = index + direction
-        if new_index < 0 or new_index >= len(self._media_paths):
+        self._move_media_to(self._preview_index + direction)
+
+    def _move_media_to(self, target):
+        """Move the previewed item to ``target`` and keep it selected."""
+        if not self._media_paths:
             return
-        self._media_paths[index], self._media_paths[new_index] = (
-            self._media_paths[new_index],
-            self._media_paths[index],
-        )
-        self._preview_index = new_index
+        source = self._preview_index
+        target = max(0, min(int(target), len(self._media_paths) - 1))
+        if source == target:
+            return
+        path = self._media_paths.pop(source)
+        self._media_paths.insert(target, path)
+        self._preview_index = target
         self._refresh_media_preview(keep_index=True)
+        self._log(f"Moved media from position {source + 1} to {target + 1}.")
 
     def _remove_preview_media(self):
         if not self._media_paths or self._preview_index >= len(self._media_paths):
@@ -845,10 +1048,99 @@ class FacebookTab(ttk.Frame):
             self._preview_index = min(self._preview_index, len(self._preview_paths) - 1)
         else:
             self._preview_index = 0
+        self._refresh_media_list()
         self._show_preview_media()
+
+    def _make_thumbnail(self, path):
+        if not self._is_image(path):
+            return None
+        try:
+            with Image.open(path) as image:
+                image.thumbnail((36, 36), Image.Resampling.LANCZOS)
+                return ImageTk.PhotoImage(image.copy())
+        except Exception:
+            return None
+
+    def _refresh_media_list(self):
+        if not hasattr(self, "media_tree"):
+            return
+        for item in self.media_tree.get_children(""):
+            self.media_tree.delete(item)
+        self._thumbnail_photos = []
+        for index, path in enumerate(self._media_paths, start=1):
+            photo = self._make_thumbnail(path)
+            if photo is not None:
+                self._thumbnail_photos.append(photo)
+            self.media_tree.insert(
+                "",
+                "end",
+                image=photo if photo is not None else "",
+                text="🎬" if self._is_video(path) else "",
+                values=(index, os.path.basename(path)),
+            )
+
+    def _sync_media_tree_selection(self):
+        if not hasattr(self, "media_tree"):
+            return
+        children = self.media_tree.get_children("")
+        self._syncing_media_selection = True
+        try:
+            selection = self.media_tree.selection()
+            if selection:
+                self.media_tree.selection_remove(*selection)
+            if children and 0 <= self._preview_index < len(children):
+                item = children[self._preview_index]
+                self.media_tree.selection_set(item)
+                self.media_tree.see(item)
+        finally:
+            self._syncing_media_selection = False
+
+    def _on_media_tree_select(self, _event):
+        if self._syncing_media_selection:
+            return
+        selection = self.media_tree.selection()
+        if not selection:
+            return
+        index = self.media_tree.index(selection[0])
+        if index == self._preview_index:
+            return
+        self._preview_index = index
+        self._show_preview_media()
+
+    def _on_media_drag_start(self, event):
+        item = self.media_tree.identify_row(event.y)
+        if not item:
+            return
+        self.media_tree.selection_set(item)
+        self._on_media_tree_select(None)
+        self._media_drag_from = self.media_tree.index(item)
+
+    def _on_media_drag_motion(self, event):
+        if self._media_drag_from is None:
+            return
+        item = self.media_tree.identify_row(event.y)
+        if item:
+            self.media_tree.see(item)
+
+    def _on_media_drag_release(self, event):
+        if self._media_drag_from is None:
+            return
+        source = self._media_drag_from
+        self._media_drag_from = None
+        item = self.media_tree.identify_row(event.y)
+        target = self.media_tree.index(item) if item else source
+        if target != source:
+            self._preview_index = source
+            self._move_media_to(target)
+
+    def _on_media_tree_mousewheel(self, event):
+        self.media_tree.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        return "break"
 
     def _show_preview_media(self):
         count = len(self._preview_paths)
+        self._preview_index = max(0, min(self._preview_index, count - 1)) if count else 0
+        self._sync_media_tree_selection()
         if not count:
             self._preview_photo = None
             self.photo_preview.configure(
@@ -860,7 +1152,6 @@ class FacebookTab(ttk.Frame):
             self.preview_previous.configure(state="disabled")
             self.preview_next.configure(state="disabled")
             return
-        self._preview_index = max(0, min(self._preview_index, count - 1))
         path = self._preview_paths[self._preview_index]
         name = os.path.basename(path)
         if self._is_video(path):

@@ -7,7 +7,7 @@ import sqlite3
 from typing import Any
 
 GROUP_COLUMNS = (
-    "id, name, url, category, subcategory, is_managed, is_favorite, is_hidden"
+    "id, group_slug, name, url, category, subcategory, is_managed, is_favorite, is_hidden"
 )
 
 CATEGORY_PREFS_SCHEMA = """
@@ -195,6 +195,31 @@ def set_group_category(
             "UPDATE groups SET category = ?, subcategory = ? WHERE id = ?",
             (cat_value, subcat_value, group_id),
         )
+
+
+def set_groups_category(
+    db_path: str,
+    group_ids: list[int],
+    category: str,
+    subcategory: str | None = None,
+) -> None:
+    """Move several groups to a category in one transaction.
+
+    Existing subcategories are preserved unless ``subcategory`` is provided.
+    """
+    if not group_ids:
+        return
+    with _connect(db_path) as connection:
+        if subcategory is None:
+            connection.executemany(
+                "UPDATE groups SET category = ? WHERE id = ?",
+                [(category, int(group_id)) for group_id in group_ids],
+            )
+        else:
+            connection.executemany(
+                "UPDATE groups SET category = ?, subcategory = ? WHERE id = ?",
+                [(category, subcategory, int(group_id)) for group_id in group_ids],
+            )
 
 
 def set_favorite(db_path: str, group_id: int, favorite: bool) -> bool:

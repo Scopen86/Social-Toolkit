@@ -118,7 +118,11 @@ The GUI provides:
   searching, and selecting whole categories. To add a group that is not in the database, paste its
   Facebook group link and click **Fetch and add**: the GUI opens the link with the logged-in Chrome
   session, reads the group name, classifies it, and inserts or updates the row in the database.
-- Editing and saving the multi-group `content.txt` in the GUI, with photo previews and drag-and-drop for content, link, photo, and video files.
+  Groups can be re-categorized in the UI with **Move selected to** or the right-click menu; the
+  change is saved to both the database and the saved category choices.
+- Editing and saving the multi-group `content.txt` in the GUI. The media section shows a numbered,
+  thumbnail-backed upload-order list: click a row to preview it and drag rows or use the move
+  buttons to reorder. Content, links, photos, and videos can also be added by drag-and-drop.
 - A live status indicator showing the active action, queued task count, cookie saves, completion, and errors. Actions queue instead of blocking, so you can line up consecutive jobs.
 - A Cancel task button for cooperative cancellation, clearing the queue and stopping before the next reposted group.
 

@@ -29,13 +29,16 @@ and displays them under their categories. Filter by category, search by name or 
 groups, and select individual groups or whole categories before reposting. To add a group that is
 not in the database, paste its Facebook group link and click **Fetch and add**: the tool opens the
 link in the logged-in Chrome session, reads the group name, classifies it, and saves it to the
-database so it is available for later runs. Log in manually in Chrome, then click **Save cookies**
-to store the session for **Login (cookies)**; the status bar reports when the cookies were saved,
-alongside the other action statuses.
+database so it is available for later runs. To re-categorize groups, select them and choose a
+target in **Move selected to** (or right-click a group/category and pick a target): the move updates
+the database and the saved category choices so future extraction keeps it. Log in manually in
+Chrome, then click **Save cookies** to store the session for **Login (cookies)**; the status bar
+reports when the cookies were saved, alongside the other action statuses.
 
 Drag photos or videos onto the media preview, or point the media folder at a directory containing
-them, and they are uploaded with the post. Videos show a thumbnail-style summary in the preview
-instead of a rendered frame.
+them, and they are uploaded with the post. The numbered upload-order list shows every file with a
+thumbnail: click a row to preview it and drag rows (or use **Move to first/up/down/last**) to change
+the order. Videos show a summary instead of a rendered frame.
 
 The GUI status bar shows the current operation, including which group is being processed during a
 multi-group repost. Actions run through a queue: clicking another action while one is running adds
