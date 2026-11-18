@@ -26,7 +26,8 @@ python tools/social_toolkit_gui.py
 
 The Multi-group repost tab loads groups from `tools/facebook_group_repost/data/facebook_groups.db`
 and displays them under their categories. Filter by category, search by name or URL, show hidden
-groups, and select individual groups or whole categories before reposting. To add a group that is
+groups, and select individual groups or whole categories before reposting. Use **Copy link(s)** or
+Ctrl+C to copy the selected group links to the clipboard. To add a group that is
 not in the database, paste its Facebook group link and click **Fetch and add**: the tool opens the
 link in the logged-in Chrome session, reads the group name, classifies it, and saves it to the
 database so it is available for later runs. To re-categorize groups, select them and choose a

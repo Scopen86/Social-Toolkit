@@ -115,7 +115,8 @@ The GUI provides:
 - Posting text and all media files in a selected folder to one group.
 - Reposting one content file and media folder to groups selected from `facebook_groups.db`. The
   Multi-group repost tab loads the database, groups entries by category, and supports filtering,
-  searching, and selecting whole categories. To add a group that is not in the database, paste its
+  searching, and selecting whole categories. Selected links can be copied with **Copy link(s)** or
+  Ctrl+C. To add a group that is not in the database, paste its
   Facebook group link and click **Fetch and add**: the GUI opens the link with the logged-in Chrome
   session, reads the group name, classifies it, and inserts or updates the row in the database.
   Groups can be re-categorized in the UI with **Move selected to** or the right-click menu; the

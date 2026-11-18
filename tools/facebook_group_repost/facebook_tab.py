@@ -314,7 +314,14 @@ class FacebookTab(ttk.Frame):
         )
         self.group_tree.bind("<MouseWheel>", self._on_tree_mousewheel)
         self.group_tree.bind("<Button-3>", self._show_group_context_menu)
+        self.group_tree.bind(
+            "<Control-c>", lambda event: self.copy_selected_group_links()
+        )
         self.group_context_menu = tk.Menu(self, tearoff=0)
+        self.group_context_menu.add_command(
+            label="Copy group link(s)", command=self.copy_selected_group_links
+        )
+        self.group_context_menu.add_separator()
         for category in CONSOLIDATED_CATEGORIES:
             self.group_context_menu.add_command(
                 label=f"Move to {category}",
@@ -329,6 +336,9 @@ class FacebookTab(ttk.Frame):
         ttk.Button(
             actions, text="Clear selection", command=self._clear_tree_selection
         ).pack(side="left", padx=6)
+        ttk.Button(
+            actions, text="Copy link(s)", command=self.copy_selected_group_links
+        ).pack(side="left", padx=(6, 0))
         ttk.Button(actions, text="Expand all", command=self._expand_all).pack(
             side="left", padx=(6, 0)
         )
@@ -373,7 +383,7 @@ class FacebookTab(ttk.Frame):
         )
         ttk.Label(
             links_frame,
-            text="Select one or more groups. Move changes the database and saved category choices; added links are fetched from Facebook.",
+            text="Select one or more groups. Copy link(s) or Ctrl+C copies the selection; Move changes the database and saved category choices.",
             foreground="#555555",
         ).grid(row=7, column=0, columnspan=4, sticky="w", pady=(2, 0))
 
@@ -635,6 +645,29 @@ class FacebookTab(ttk.Frame):
                 seen.add(group_id)
                 ids.append(group_id)
         return ids
+
+    def copy_selected_group_links(self):
+        """Copy the selected groups' URLs to the system clipboard."""
+        links = self._selected_group_urls()
+        if not links:
+            messagebox.showinfo(
+                "Copy group links", "Select one or more groups from the list first."
+            )
+            return
+        text = links[0] if len(links) == 1 else "\n".join(links)
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(text)
+            self.update_idletasks()
+        except tk.TclError as exc:
+            messagebox.showerror("Could not copy links", str(exc))
+            return
+        message = (
+            f"Copied {len(links)} group link{'s' if len(links) != 1 else ''} "
+            "to clipboard"
+        )
+        self._log(message)
+        self._set_status(message)
 
     def _update_group_count(self):
         if not hasattr(self, "group_count_text"):
