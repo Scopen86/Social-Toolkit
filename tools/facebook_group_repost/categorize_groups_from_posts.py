@@ -15,8 +15,9 @@ import sys
 import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from lib.group_classifier import (
     CONSOLIDATED_CATEGORIES,
@@ -26,7 +27,7 @@ from lib.group_classifier import (
 
 sys.stdout.reconfigure(encoding='utf-8')
 
-DATA_DIR = os.path.join(BASE_DIR, 'tools', 'facebook_group_repost', 'data')
+DATA_DIR = os.path.join(BASE_DIR, 'data')
 DEFAULT_DB = os.path.join(DATA_DIR, 'facebook_groups.db')
 OVERRIDES_PATH = os.path.join(DATA_DIR, 'group_categories.json')
 REVIEW_PATH = os.path.join(DATA_DIR, 'group_category_review.json')

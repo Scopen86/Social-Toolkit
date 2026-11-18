@@ -11,11 +11,12 @@ from bs4 import BeautifulSoup
 sys.stdout.reconfigure(encoding='utf-8')
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from lib.group_classifier import classify_consolidated_pair, consolidate_category
-DATA_DIR = os.path.join(BASE_DIR, 'tools', 'facebook_group_repost', 'data')
+DATA_DIR = os.path.join(BASE_DIR, 'data')
 AUTH_DIR = os.path.join(DATA_DIR, 'auth')
 COOKIES_FILE = os.path.join(AUTH_DIR, 'facebook_cookies.json')
 CREDENTIALS_FILE = os.path.join(AUTH_DIR, 'facebook_credentials.txt')
@@ -27,7 +28,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "html_path",
     nargs="?",
-    default=os.path.join(BASE_DIR, "Facebook.html"),
+    default=os.path.join(PROJECT_ROOT, "Facebook.html"),
     help="Saved Facebook groups HTML page (default: Facebook.html in the project root)",
 )
 parser.add_argument(
@@ -63,8 +64,8 @@ def fetch_groups_html(output_path):
     from selenium.webdriver.chrome.options import Options
     from selenium.webdriver.common.by import By
 
-    if BASE_DIR not in sys.path:
-        sys.path.insert(0, BASE_DIR)
+    if PROJECT_ROOT not in sys.path:
+        sys.path.insert(0, PROJECT_ROOT)
     from lib.facebook_engine import login, save_cookies
 
     print("Launching Chrome to fetch your groups page...")

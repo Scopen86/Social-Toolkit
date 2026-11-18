@@ -1,177 +1,119 @@
 # Social Toolkit
 
-Python automation utilities for social platform workflows.
+A Windows-focused Tkinter app plus CLI tools for Facebook group reposting, post reading, and Discord interactions.
 
-Current tool included:
-- Facebook Group Repost automation using Selenium.
-- Tkinter GUI for Facebook login, post actions, group posting, and multi-group reposting.
+Everything runs locally. Session cookies, credentials, media, and SQLite databases stay in `tools/facebook_group_repost/data/` and are ignored by Git.
 
-## Requirements
-
-- Windows, macOS, or Linux
-- Python 3.10+
-- Google Chrome installed
-- Matching ChromeDriver available in your PATH (or Selenium Manager support)
-
-## Installation
+## Quick start
 
 ```bash
-python -m venv .venv
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
-# macOS/Linux
-# source .venv/bin/activate
-
 pip install -r requirements.txt
 ```
 
-## Project Structure
+Launch the GUI **without a terminal window** on Windows:
 
-```text
-Social-Toolkit/
-  lib/
-    facebook_engine.py
-  tools/
-    facebook_group_repost/
-      data/
-        auth/
-        Group Links/
-        Images/
-        content.txt
-        facebook_groups.db
-      repost.py
-  requirements.txt
-```
+- Double-click `run_gui.vbs` in the project root, or
+- Double-click `tools/social_toolkit_gui.pyw`.
 
-## Extracting Groups from Facebook
-
-The script can fetch your groups page automatically. Make sure your login cookies are fresh (open
-the GUI, click **Start browser**, log in manually, then **Save cookies**), then run:
-
-```bash
-python extract_groups_to_sqlite.py --fetch
-```
-
-It opens Chrome, logs in with the saved cookies, scrolls the groups page until all groups are
-loaded, saves the page as `Facebook.html` in the project root, and then extracts the groups. If
-Facebook asks for verification, complete it in the Chrome window; the script continues
-automatically. Use `--fetch-only` to save the page without touching the database.
-
-You can also fetch the page yourself: open `https://www.facebook.com/groups/joins/` in Chrome,
-scroll until every group is loaded, save the page (`Ctrl+S`) as `Facebook.html`, then run:
-
-```bash
-python extract_groups_to_sqlite.py
-```
-
-The script classifies each group into one of eight commerce-focused buckets:
-**Laptops & MacBooks**, **PC Parts**, **PC Peripherals**, **Phones & Mobile**, **Cameras**,
-**Audio**, **General Market**, or **Other**. PC Peripherals groups also get a subcategory of
-**Mouse**, **Keyboard**, or **General Peripheral**. It then walks through groups that have no saved category choice and asks you to
-**keep** the suggestion (`Enter`), **change** it (`c`, then pick a category by number or type a
-new one), or **keep all remaining** suggestions (`q`). Choices you change are stored in
-`tools/facebook_group_repost/data/group_categories.json` and reused on later runs, so only new
-groups need review. Add `--auto` to accept every automatic category without prompting, or
-`--review-all` to review groups that already have saved choices. The results are written to
-`tools/facebook_group_repost/data/facebook_groups.db`.
-
-For extra accuracy, `categorize_groups_from_posts.py` opens each uncertain group, reads a few
-recent posts, and refines the category from the post text. High-confidence results are saved;
-low-confidence groups are prompted in the terminal or written to
-`tools/facebook_group_repost/data/group_category_review.json` when run with `--report`:
-
-```bash
-python categorize_groups_from_posts.py --report
-```
-
-## Facebook Group Repost
-
-Run from the repository root:
-
-```bash
-python tools/facebook_group_repost/repost.py
-```
-
-## Unified GUI
-
-Start the combined Discord and Facebook interface from the repository root:
+Both use the Python no-console launcher (`pyw.exe` / `pythonw.exe`). You can also run it with a visible terminal:
 
 ```bash
 python tools/social_toolkit_gui.py
 ```
 
-On Windows, double-click `run_gui.vbs` in the project root (or `tools/social_toolkit_gui.pyw`) to
-start the same GUI with no terminal window. `run_gui.vbs` uses `pyw.exe`; the `.pyw` file uses
-`pythonw.exe` through the Windows file association.
+Chrome is required for the Facebook actions. Selenium Manager resolves a compatible ChromeDriver automatically.
 
-The combined interface has separate Discord and Facebook tabs and opens on Facebook by default.
-The Facebook browser starts when you click **Start browser** in its tab. The Discord tab supports
-plain messages, configurable slash command interactions, and clicking enabled buttons discovered on
-recent messages from the configured application.
+## Project layout
 
-The GUI provides:
-
-- Manual login in Chrome, then **Save cookies** to store that session. The toolbar shows when
-  cookies were last saved, and **Login (cookies)** reuses them on later runs.
-- Opening a post URL and extracting its text.
-- Reading a post and saving its visible details to a local SQLite database (`tools/facebook_group_repost/data/posts.db` by default). The database path is editable in the Post actions tab.
-- Scraping a group member's posts, limited to the 10 newest posts or the last 30 days.
-- Like, comment, and share actions.
-- Posting text and all media files in a selected folder to one group.
-- Reposting one content file and media folder to groups selected from `facebook_groups.db`. The
-  Multi-group repost tab loads the database, groups entries by category, and supports filtering,
-  searching, and selecting whole categories. Selected links can be copied with **Copy link(s)** or
-  Ctrl+C. To add a group that is not in the database, paste its
-  Facebook group link and click **Fetch and add**: the GUI opens the link with the logged-in Chrome
-  session, reads the group name, classifies it, and inserts or updates the row in the database.
-  Groups can be re-categorized in the UI with **Move selected to** or the right-click menu; the
-  change is saved to both the database and the saved category choices. **Remove from DB** deletes
-  selected groups (and their saved choices) after confirmation.
-- Editing and saving the multi-group `content.txt` in the GUI. The media section uses a Facebook-style
-  numbered thumbnail grid: click a tile to preview, drag tiles to reorder freely, and remove a single
-  item with its × button. Content, links, photos, and videos can also be added by drag-and-drop.
-- A live status indicator showing the active action, queued task count, cookie saves, completion, and errors. Actions queue instead of blocking, so you can line up consecutive jobs.
-- A Cancel task button for cooperative cancellation, clearing the queue and stopping before the next reposted group.
-- A **Shutdown PC when done** checkbox that schedules a 60-second Windows shutdown once the task queue empties (cancel it with `shutdown /a`).
-
-Start Chrome, log in, and keep the browser open while using the post or group tabs. Selenium Manager
-will find a compatible ChromeDriver when supported by the installed Selenium version.
-
-The post reader stores each post's URL, Facebook post ID (including IDs supplied through
-`multi_permalinks`), message, visible author, absolute timestamp, and capture time in the
-`posts` SQLite table, along with a category. New posts start as `Uncategorized`; categories can be
-assigned from the message content. Facebook only exposes information rendered to the logged-in
-browser, so fields unavailable in the page are left empty. Re-reading the same URL updates its row
-while preserving an existing category.
-Use the Group member URL field in the Post actions tab to start a user-post scrape. The selected range
-is saved to the same `posts` table.
-
-### Useful flags
-
-- `-l`, `--login`: force credential login instead of cookie login
-- `--credential_file`: path to credentials file (default: `tools/facebook_group_repost/data/auth/facebook_credentials.txt`)
-- `--cookies_file`: path to cookie file (default: `tools/facebook_group_repost/data/auth/facebook_cookies.json`)
-- `--source`: choose groups from `db` (default) or `file`
-- `--groups_db`: path to the groups SQLite database (default: `tools/facebook_group_repost/data/facebook_groups.db`)
-- `--group_category`: only include groups in this category
-- `--group_subcategory`: only include groups in this subcategory
-- `--managed_only`: only include groups you manage
-- `-g`, `--group_links_file`: group links list file (used with `--source file`)
-- `-c`, `--content_file`: post content file
-- `--image_dir`: folder containing photos and videos to attach
-
-Example:
-
-```bash
-python tools/facebook_group_repost/repost.py \
-  --credential_file tools/facebook_group_repost/data/auth/facebook_credentials.txt \
-  --cookies_file tools/facebook_group_repost/data/auth/facebook_cookies.json \
-  --group_links_file "tools/facebook_group_repost/data/Group Links/test.txt" \
-  --content_file tools/facebook_group_repost/data/content.txt \
-  --image_dir tools/facebook_group_repost/data/Images
+```text
+Social-Toolkit/
+├── run_gui.vbs                      # hidden-console GUI launcher
+├── Facebook.html                    # saved Facebook groups page (local data)
+├── requirements.txt
+├── lib/
+│   ├── facebook_engine.py           # Selenium actions shared by GUI and CLI
+│   ├── group_classifier.py          # category taxonomy and rules
+│   ├── groups_db.py                 # groups DB read/write helpers
+│   └── upload_log.py                # persistent failed-upload log
+└── tools/
+    ├── social_toolkit_gui.py         # unified GUI entry point
+    ├── social_toolkit_gui.pyw        # same entry point, no console
+    ├── discord_interaction/
+    │   └── discord_tab.py
+    └── facebook_group_repost/
+        ├── facebook_tab.py           # Facebook GUI tab
+        ├── repost.py                 # CLI repost tool
+        ├── extract_groups_to_sqlite.py
+        ├── categorize_groups_from_posts.py
+        ├── README.md
+        └── data/                     # local runtime data (gitignored)
 ```
 
-Repost to groups from the database, filtered by category:
+## GUI
+
+The app opens on the **Facebook** tab. The **Discord** tab supports plain messages, configured slash-command interactions, and clicking enabled buttons found in recent messages.
+
+The toolbar has **Start browser**, **Close browser**, **Login (cookies)**, **Save cookies**, and **Cancel task**. Actions are queued: starting another action while one is running adds it to the queue rather than blocking the UI. The activity log at the bottom shows progress and errors.
+
+### Facebook tab
+
+**Post actions**
+
+- Open a post URL and extract its text.
+- Save visible post details to `tools/facebook_group_repost/data/posts.db` (URL, post ID, message, author, timestamp, capture time, category). Re-reading a URL updates its row but keeps the assigned category.
+- Scrape a group member's recent posts (10 newest or last 30 days).
+- Like, comment, share, or post to a single group.
+- Log in manually in Chrome, then click **Save cookies** so later runs reuse the session.
+
+**Multi-group repost**
+
+- Groups are loaded from `tools/facebook_group_repost/data/facebook_groups.db` and shown as a tree grouped by category, with a subcategory column.
+- Filter by category, search by name or URL, and optionally show hidden groups.
+- Select individual groups or whole categories; **Select all visible** and **Clear selection** help with bulk actions.
+- **Copy link(s)** (or Ctrl+C on the tree) copies selected group URLs to the clipboard, one per line.
+- **Move selected to** plus the subcategory dropdown (or the right-click menu) reclassifies groups. Changes are saved to both the database and `group_categories.json`, so future extraction keeps them. Collapsed categories stay collapsed after a move.
+- **Remove from DB** deletes selected groups after confirmation and removes their saved category choices.
+- **Add group by link**: paste a Facebook group URL and click **Fetch and add**. The app opens it in the logged-in Chrome session, reads the name, classifies it, and inserts or updates the row in the database.
+
+**Media order**
+
+The media area uses a Facebook-style numbered thumbnail grid:
+
+- Click a tile to preview it in the side panel.
+- Drag a tile onto another to reorder freely; dragging onto the `＋ Add` tile moves it to the end.
+- Each tile has an **×** button to remove just that item; **Remove selected** and **Clear all** are also available.
+- Add more media with **Add files** or by dropping files on the grid or preview. Videos show a summary instead of a rendered frame.
+
+The displayed grid order is the order in which files are uploaded.
+
+**Shutdown when done**
+
+Enable **Shutdown PC when done** in the toolbar. When the task queue empties, the GUI schedules a Windows shutdown with a 60-second countdown. Cancel it during the countdown with:
+
+```cmd
+shutdown /a
+```
+
+**Failure log**
+
+Failed uploads are appended to `tools/facebook_group_repost/data/upload_failures.log` with a timestamp, group name, URL, and error. The **Failure log** button in the repost tab opens it in the default text editor.
+
+### Categories
+
+Groups use eight commerce-focused categories:
+
+- Laptops & MacBooks
+- PC Parts
+- PC Peripherals
+- Phones & Mobile
+- Cameras
+- Audio
+- General Market
+- Other
+
+PC Peripherals groups also carry a subcategory: **Mouse**, **Keyboard**, or **General Peripheral**.
+
+## CLI repost
 
 ```bash
 python tools/facebook_group_repost/repost.py --source db \
@@ -180,14 +122,39 @@ python tools/facebook_group_repost/repost.py --source db \
   --image_dir tools/facebook_group_repost/data/Images
 ```
 
-## Data and Security Notes
+Useful flags:
 
-- Do not commit credentials, cookies, private group links, or local media.
-- `.gitignore` is configured to ignore common sensitive/runtime files under `tools/facebook_group_repost/data/`.
-- Keep account and automation usage compliant with platform terms and local laws.
+- `-l`, `--login`: force credential login instead of cookie login
+- `--credential_file`, `--cookies_file`: override auth paths
+- `--source`: `db` (default) or `file`
+- `--groups_db`: path to the groups database
+- `--group_category`, `--group_subcategory`, `--managed_only`: database filters
+- `-g`, `--group_links_file`: URL list used with `--source file`
+- `-c`, `--content_file`, `--image_dir`: post content and media
 
-## Troubleshooting
+Failed uploads are also written to `data/upload_failures.log`.
 
-- If browser launch fails, update Chrome and ChromeDriver.
-- If login loops, run once with `--login` and complete verification manually to refresh cookies.
-- If posting elements are not found, Facebook UI selectors may have changed and may need updates in `lib/facebook_engine.py`.
+## Group database tools
+
+Both scripts live in `tools/facebook_group_repost/` and operate on `data/facebook_groups.db`.
+
+```bash
+# Rebuild the groups DB from the saved Facebook groups HTML page
+python tools/facebook_group_repost/extract_groups_to_sqlite.py --auto
+
+# Refresh the page from Chrome with saved cookies first
+python tools/facebook_group_repost/extract_groups_to_sqlite.py --fetch --auto
+
+# Refine uncertain categories by reading recent posts
+python tools/facebook_group_repost/categorize_groups_from_posts.py --report
+```
+
+`extract_groups_to_sqlite.py` defaults to `Facebook.html` in the project root, applies saved choices from `data/group_categories.json`, and writes low-confidence review items to `data/group_category_review.json` with `--report`. `categorize_groups_from_posts.py` saves high-confidence results automatically and can print the category list with `--categories-only`.
+
+## Data and privacy
+
+These local files are gitignored and should not be committed: cookies, credentials, `Facebook.html`, local media, `content.txt`, `*.db`, and generated logs/reports. The live group database is `tools/facebook_group_repost/data/facebook_groups.db`; `posts.db` stores read posts.
+
+## Requirements
+
+See `requirements.txt`: Selenium, google-genai, Pillow, tkinterdnd2, BeautifulSoup4, and lxml.

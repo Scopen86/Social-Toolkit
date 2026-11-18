@@ -31,6 +31,7 @@ from lib.groups_db import (
     set_groups_category,
     upsert_group,
 )
+from lib.upload_log import DEFAULT_FAILURE_LOG, log_upload_failure
 from lib.facebook_engine import (
     comment_on_post,
     extract_post_details,
@@ -372,6 +373,9 @@ class FacebookTab(ttk.Frame):
         ttk.Button(
             actions, text="Remove from DB", command=self.remove_selected_groups
         ).pack(side="left", padx=(6, 0))
+        ttk.Button(
+            actions, text="Failure log", command=self._open_failure_log
+        ).pack(side="left", padx=(6, 0))
         ttk.Button(actions, text="Expand all", command=self._expand_all).pack(
             side="left", padx=(6, 0)
         )
@@ -688,6 +692,18 @@ class FacebookTab(ttk.Frame):
         )
         self._log(message)
         self._set_status(message)
+
+    def _open_failure_log(self):
+        """Open the persistent failed-upload log in the default text editor."""
+        if not os.path.isfile(DEFAULT_FAILURE_LOG):
+            messagebox.showinfo(
+                "Failure log", "No failed uploads have been logged yet."
+            )
+            return
+        try:
+            os.startfile(DEFAULT_FAILURE_LOG)
+        except OSError as exc:
+            messagebox.showerror("Failure log", str(exc))
 
     def _update_group_count(self):
         if not hasattr(self, "group_count_text"):
@@ -1827,11 +1843,25 @@ class FacebookTab(ttk.Frame):
                 successes += 1
             except Exception as exc:
                 failures += 1
+                name = next(
+                    (
+                        row.get("name") or ""
+                        for row in self._db_groups
+                        if (row.get("url") or "").casefold() == (link or "").casefold()
+                    ),
+                    "",
+                )
+                try:
+                    log_upload_failure(link, exc, name)
+                except OSError as log_exc:
+                    self._log(f"ERROR: could not write failure log: {log_exc}")
                 self._log(f"ERROR posting to {link}: {exc}")
                 continue
         self._log(
             f"Repost complete: {successes} succeeded, {failures} failed of {total}."
         )
+        if failures:
+            self._log(f"Failed uploads logged to: {DEFAULT_FAILURE_LOG}")
 
     def shutdown(self):
         self.cancel_event.set()

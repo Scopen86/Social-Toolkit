@@ -16,6 +16,7 @@ if ROOT_DIR not in sys.path:
 
 from lib.facebook_engine import login, post_to_group
 from lib.groups_db import load_group_urls
+from lib.upload_log import log_upload_failure
 
 
 def repost_to_groups(driver, group_links, post_content, image_dir=None, log=print):
@@ -42,6 +43,10 @@ def repost_to_groups(driver, group_links, post_content, image_dir=None, log=prin
             successes += 1
         except Exception as exc:
             failures += 1
+            try:
+                log_upload_failure(group_link, exc)
+            except OSError as log_exc:
+                log(f"ERROR: could not write failure log: {log_exc}")
             log(f"ERROR posting to {group_link}: {exc}")
             continue
     log(f"Finished repost: {successes} succeeded, {failures} failed out of {total}.")
