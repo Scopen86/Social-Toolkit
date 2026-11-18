@@ -34,7 +34,8 @@ database so it is available for later runs. The tree shows each group's category
 PC Peripherals groups use **Mouse**, **Keyboard**, or **General Peripheral**. To re-categorize
 groups, select them, choose a target in **Move selected to** and optionally a subcategory (or
 right-click a group/category and pick a target): the move updates the database and the saved
-category choices so future extraction keeps it. Log in manually in
+category choices so future extraction keeps it. Use **Remove from DB** (or the right-click
+option) to permanently delete selected groups and their saved category choices. Log in manually in
 Chrome, then click **Save cookies** to store the session for **Login (cookies)**; the status bar
 reports when the cookies were saved, alongside the other action statuses.
 

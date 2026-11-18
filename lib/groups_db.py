@@ -222,6 +222,19 @@ def set_groups_category(
             )
 
 
+def delete_groups(db_path: str, group_ids: list[int]) -> int:
+    """Delete several groups in one transaction; return the removed count."""
+    if not group_ids:
+        return 0
+    ids = [int(group_id) for group_id in group_ids]
+    with _connect(db_path) as connection:
+        placeholders = ",".join("?" for _ in ids)
+        cursor = connection.execute(
+            f"DELETE FROM groups WHERE id IN ({placeholders})", ids
+        )
+        return cursor.rowcount if cursor.rowcount > 0 else 0
+
+
 def set_favorite(db_path: str, group_id: int, favorite: bool) -> bool:
     """Mark a group as favorite (or not) and return the stored value."""
     set_group_flags(db_path, group_id, favorite=favorite)

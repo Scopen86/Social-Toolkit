@@ -24,7 +24,12 @@ from lib.group_classifier import (
     PERIPHERAL_SUBCATEGORIES,
     classify_consolidated_pair,
 )
-from lib.groups_db import load_groups, set_groups_category, upsert_group
+from lib.groups_db import (
+    delete_groups,
+    load_groups,
+    set_groups_category,
+    upsert_group,
+)
 from lib.facebook_engine import (
     comment_on_post,
     extract_post_details,
@@ -338,6 +343,10 @@ class FacebookTab(ttk.Frame):
                 label=f"Move to {category}",
                 command=lambda value=category: self.move_selected_groups(value),
             )
+        self.group_context_menu.add_separator()
+        self.group_context_menu.add_command(
+            label="Remove from database", command=self.remove_selected_groups
+        )
 
         actions = ttk.Frame(links_frame)
         actions.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(6, 0))
@@ -349,6 +358,9 @@ class FacebookTab(ttk.Frame):
         ).pack(side="left", padx=6)
         ttk.Button(
             actions, text="Copy link(s)", command=self.copy_selected_group_links
+        ).pack(side="left", padx=(6, 0))
+        ttk.Button(
+            actions, text="Remove from DB", command=self.remove_selected_groups
         ).pack(side="left", padx=(6, 0))
         ttk.Button(actions, text="Expand all", command=self._expand_all).pack(
             side="left", padx=(6, 0)
@@ -403,7 +415,7 @@ class FacebookTab(ttk.Frame):
         )
         ttk.Label(
             links_frame,
-            text="Select one or more groups. Copy link(s) or Ctrl+C copies the selection; Move changes the database and saved category choices.",
+            text="Select one or more groups. Copy link(s) copies URLs; Move/Remove change the database and saved category choices.",
             foreground="#555555",
         ).grid(row=7, column=0, columnspan=4, sticky="w", pady=(2, 0))
 
@@ -876,6 +888,68 @@ class FacebookTab(ttk.Frame):
                 json.dump(data, file, ensure_ascii=False, indent=2, sort_keys=True)
         except (OSError, ValueError) as exc:
             self._log(f"Could not save category override: {exc}")
+
+    def remove_selected_groups(self, confirm=True):
+        """Permanently delete selected groups from the database."""
+        ids = self._selected_group_ids()
+        if not ids:
+            messagebox.showinfo(
+                "Remove groups", "Select one or more groups from the list first."
+            )
+            return
+        rows = [row for row in self._db_groups if row.get("id") in ids]
+        if not rows:
+            return
+        names = [row.get("name") or row.get("url") or str(row["id"]) for row in rows]
+        preview = "\n".join(names[:8])
+        if len(names) > 8:
+            preview += f"\n... and {len(names) - 8} more"
+        if confirm and not messagebox.askyesno(
+            "Remove groups from database",
+            f"Permanently remove {len(rows)} selected group"
+            f"{'s' if len(rows) != 1 else ''} from the database?\n\n{preview}",
+        ):
+            return
+
+        db_path = self.groups_db.get().strip()
+        try:
+            removed = delete_groups(db_path, ids)
+            self._remove_category_overrides(rows)
+        except Exception as exc:
+            messagebox.showerror("Could not remove groups", str(exc))
+            return
+        self._load_db_groups()
+        message = f"Removed {removed} group{'s' if removed != 1 else ''} from the database"
+        self._log(message)
+        self._set_status(message)
+
+    def _remove_category_overrides(self, rows):
+        slugs = {str(row.get("group_slug") or "").strip() for row in rows}
+        slugs.discard("")
+        if not slugs:
+            return
+        try:
+            try:
+                with open(CATEGORY_OVERRIDES_FILE, "r", encoding="utf-8") as file:
+                    data = json.load(file)
+            except FileNotFoundError:
+                return
+            if not isinstance(data, dict):
+                return
+            changed = False
+            for slug in slugs:
+                if slug in data:
+                    del data[slug]
+                    changed = True
+                groups = data.get("groups")
+                if isinstance(groups, dict) and slug in groups:
+                    del groups[slug]
+                    changed = True
+            if changed:
+                with open(CATEGORY_OVERRIDES_FILE, "w", encoding="utf-8") as file:
+                    json.dump(data, file, ensure_ascii=False, indent=2, sort_keys=True)
+        except (OSError, ValueError) as exc:
+            self._log(f"Could not update saved categories: {exc}")
 
     def add_group_link(self):
         raw = self.group_link_input.get().strip()

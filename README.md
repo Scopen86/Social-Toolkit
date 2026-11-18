@@ -121,7 +121,8 @@ The GUI provides:
   Facebook group link and click **Fetch and add**: the GUI opens the link with the logged-in Chrome
   session, reads the group name, classifies it, and inserts or updates the row in the database.
   Groups can be re-categorized in the UI with **Move selected to** or the right-click menu; the
-  change is saved to both the database and the saved category choices.
+  change is saved to both the database and the saved category choices. **Remove from DB** deletes
+  selected groups (and their saved choices) after confirmation.
 - Editing and saving the multi-group `content.txt` in the GUI. The media section shows a numbered,
   thumbnail-backed upload-order list: click a row to preview it and drag rows or use the move
   buttons to reorder. Content, links, photos, and videos can also be added by drag-and-drop.
