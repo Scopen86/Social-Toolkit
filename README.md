@@ -64,9 +64,10 @@ scroll until every group is loaded, save the page (`Ctrl+S`) as `Facebook.html`,
 python extract_groups_to_sqlite.py
 ```
 
-The script classifies each group into one of six commerce-focused buckets:
-**Laptops & MacBooks**, **PC Parts & Peripherals**, **Phones & Mobile**, **Cameras & Audio**,
-**General Market**, or **Other**. It then walks through groups that have no saved category choice and asks you to
+The script classifies each group into one of eight commerce-focused buckets:
+**Laptops & MacBooks**, **PC Parts**, **PC Peripherals**, **Phones & Mobile**, **Cameras**,
+**Audio**, **General Market**, or **Other**. PC Peripherals groups also get a subcategory of
+**Mouse**, **Keyboard**, or **General Peripheral**. It then walks through groups that have no saved category choice and asks you to
 **keep** the suggestion (`Enter`), **change** it (`c`, then pick a category by number or type a
 new one), or **keep all remaining** suggestions (`q`). Choices you change are stored in
 `tools/facebook_group_repost/data/group_categories.json` and reused on later runs, so only new

@@ -14,7 +14,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from lib.group_classifier import classify_group, consolidate_category
+from lib.group_classifier import classify_consolidated_pair, consolidate_category
 DATA_DIR = os.path.join(BASE_DIR, 'tools', 'facebook_group_repost', 'data')
 AUTH_DIR = os.path.join(DATA_DIR, 'auth')
 COOKIES_FILE = os.path.join(AUTH_DIR, 'facebook_cookies.json')
@@ -472,9 +472,8 @@ for li in listitems:
     # Raw text
     raw_text = li.get_text(separator=' | ', strip=True)
     
-    # Categorization (commerce-focused buckets)
-    category = consolidate_category(classify_group(slug, name)[0])
-    subcategory = ""
+    # Categorization (commerce-focused buckets, with peripheral subcategories)
+    category, subcategory = classify_consolidated_pair(slug, name)
     
     records.append((
         slug,
@@ -511,7 +510,7 @@ if category_overrides:
         saved = category_overrides.get(record[0])
         if saved:
             record[4] = consolidate_category(saved['category'])
-            record[5] = ""
+            record[5] = saved.get('subcategory', '')
             applied += 1
     print(f"Applied saved categories to {applied} group(s) from {CATEGORY_OVERRIDES_PATH}.")
 

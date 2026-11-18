@@ -19,7 +19,11 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
-from lib.group_classifier import CONSOLIDATED_CATEGORIES, classify_consolidated
+from lib.group_classifier import (
+    CONSOLIDATED_CATEGORIES,
+    PERIPHERAL_SUBCATEGORIES,
+    classify_consolidated_pair,
+)
 from lib.groups_db import load_groups, set_groups_category, upsert_group
 from lib.facebook_engine import (
     comment_on_post,
@@ -84,6 +88,7 @@ class FacebookTab(ttk.Frame):
         self.move_category = tk.StringVar(
             value=CONSOLIDATED_CATEGORIES[-1] if CONSOLIDATED_CATEGORIES else ""
         )
+        self.move_subcategory = tk.StringVar(value="")
         self._db_groups = []
         self._tree_urls = {}
         self._tree_group_ids = {}
@@ -289,17 +294,19 @@ class FacebookTab(ttk.Frame):
         tree_frame.grid(row=2, column=0, columnspan=4, sticky="nsew", pady=(6, 0))
         self.group_tree = ttk.Treeview(
             tree_frame,
-            columns=("category", "url"),
+            columns=("category", "subcategory", "url"),
             show="tree headings",
             selectmode="extended",
             height=14,
         )
         self.group_tree.heading("#0", text="Group / category")
         self.group_tree.heading("category", text="Category")
+        self.group_tree.heading("subcategory", text="Subcategory")
         self.group_tree.heading("url", text="URL")
-        self.group_tree.column("#0", width=320, minwidth=200, stretch=True)
-        self.group_tree.column("category", width=160, minwidth=100, stretch=False)
-        self.group_tree.column("url", width=300, minwidth=150, stretch=True)
+        self.group_tree.column("#0", width=300, minwidth=200, stretch=True)
+        self.group_tree.column("category", width=150, minwidth=100, stretch=False)
+        self.group_tree.column("subcategory", width=140, minwidth=90, stretch=False)
+        self.group_tree.column("url", width=280, minwidth=150, stretch=True)
         self.group_tree.tag_configure(
             "category", font=("Segoe UI", 9, "bold")
         )
@@ -361,6 +368,15 @@ class FacebookTab(ttk.Frame):
             width=24,
         )
         self.move_target.pack(side="left", padx=6)
+        ttk.Label(move_row, text="Sub:").pack(side="left", padx=(6, 0))
+        self.move_subtarget = ttk.Combobox(
+            move_row,
+            textvariable=self.move_subcategory,
+            values=("(keep)",) + PERIPHERAL_SUBCATEGORIES,
+            state="readonly",
+            width=18,
+        )
+        self.move_subtarget.pack(side="left", padx=6)
         ttk.Button(
             move_row, text="Move groups", command=self.move_selected_groups
         ).pack(side="left")
@@ -617,7 +633,7 @@ class FacebookTab(ttk.Frame):
                     parent,
                     "end",
                     text=display,
-                    values=(category, url),
+                    values=(category, row.get("subcategory") or "", url),
                     tags=tuple(tags),
                 )
                 self._tree_urls[item] = url
@@ -777,25 +793,51 @@ class FacebookTab(ttk.Frame):
                 "Move groups", "Select one or more groups from the list first."
             )
             return
-        rows = [row for row in self._db_groups if row.get("id") in ids]
-        rows = [row for row in rows if (row.get("category") or "Other") != target]
+        chosen = self.move_subcategory.get().strip()
+        if chosen in ("", "(keep)"):
+            chosen = None
+        if target == "PC Peripherals":
+            subcategory = chosen  # None keeps the group's current subcategory
+        else:
+            subcategory = ""
+
+        def needs_move(row):
+            if (row.get("category") or "Other") != target:
+                return True
+            current_sub = row.get("subcategory") or ""
+            if target == "PC Peripherals":
+                return subcategory is not None and current_sub != subcategory
+            return bool(current_sub)
+
+        rows = [
+            row for row in self._db_groups if row.get("id") in ids and needs_move(row)
+        ]
         if not rows:
             messagebox.showinfo(
-                "Move groups", "The selected groups are already in that category."
+                "Move groups",
+                "The selected groups are already in that category and subcategory.",
             )
             return
+        detail = f" ({subcategory})" if subcategory else ""
         if confirm and not messagebox.askyesno(
             "Move groups",
             f"Move {len(rows)} selected group{'s' if len(rows) != 1 else ''} "
-            f"to {target}?",
+            f"to {target}{detail}?",
         ):
             return
-
         db_path = self.groups_db.get().strip()
         try:
-            set_groups_category(db_path, [row["id"] for row in rows], target)
+            set_groups_category(
+                db_path,
+                [row["id"] for row in rows],
+                target,
+                subcategory=subcategory,
+            )
             for row in rows:
-                self._save_category_override(row, target)
+                final_sub = (
+                    subcategory if subcategory is not None else (row.get("subcategory") or "")
+                )
+                self._save_category_override(row, target, final_sub)
         except Exception as exc:
             messagebox.showerror("Could not move groups", str(exc))
             return
@@ -809,7 +851,7 @@ class FacebookTab(ttk.Frame):
         self._log(message)
         self._set_status(message)
 
-    def _save_category_override(self, row, category):
+    def _save_category_override(self, row, category, subcategory=""):
         """Persist a manual move so future extraction keeps the choice."""
         slug = str(row.get("group_slug") or "").strip()
         if not slug:
@@ -828,7 +870,7 @@ class FacebookTab(ttk.Frame):
             data[slug] = {
                 "name": row.get("name") or "",
                 "category": category,
-                "subcategory": row.get("subcategory") or "",
+                "subcategory": subcategory or "",
             }
             with open(CATEGORY_OVERRIDES_FILE, "w", encoding="utf-8") as file:
                 json.dump(data, file, ensure_ascii=False, indent=2, sort_keys=True)
@@ -863,13 +905,14 @@ class FacebookTab(ttk.Frame):
         self.driver.get(url)
         name = self._wait_for_group_name(slug)
         self._raise_if_cancelled()
-        category = classify_consolidated(slug, name)[0]
+        category, subcategory = classify_consolidated_pair(slug, name)
         _group_id, created = upsert_group(
             db_path,
             slug=slug,
             name=name,
             url=url,
             category=category,
+            subcategory=subcategory,
         )
         self._log(
             f"{'Added' if created else 'Updated'} group in database: "

@@ -356,33 +356,135 @@ def classify_group(slug, name):
 
 CONSOLIDATED_CATEGORIES = (
     "Laptops & MacBooks",
-    "PC Parts & Peripherals",
+    "PC Parts",
+    "PC Peripherals",
     "Phones & Mobile",
-    "Cameras & Audio",
+    "Cameras",
+    "Audio",
     "General Market",
     "Other",
 )
 
+PERIPHERAL_SUBCATEGORIES = ("Mouse", "Keyboard", "General Peripheral")
+
 # Map the fine-grained classifier (and older manual category names) onto the
-# commerce-focused buckets.
+# current commerce-focused buckets.
 CATEGORY_CONSOLIDATION = {
     "Laptop, Macbook & Máy trạm": "Laptops & MacBooks",
-    "Linh kiện PC, Build máy tính & Màn hình": "PC Parts & Peripherals",
-    "Bàn phím cơ & Phụ kiện Custom": "PC Parts & Peripherals",
-    "Gaming Gear & Phụ kiện game thủ": "PC Parts & Peripherals",
-    "Gaming Gear": "PC Parts & Peripherals",
-    "Sửa chữa phần cứng & Rã xác linh kiện": "PC Parts & Peripherals",
-    "Linh kiện & Thiết bị điện tử": "PC Parts & Peripherals",
-    "Máy chơi game Handheld & Console": "PC Parts & Peripherals",
+    "Linh kiện PC, Build máy tính & Màn hình": "PC Parts",
+    "Bàn phím cơ & Phụ kiện Custom": "PC Peripherals",
+    "Gaming Gear & Phụ kiện game thủ": "PC Peripherals",
+    "Gaming Gear": "PC Peripherals",
+    "Sửa chữa phần cứng & Rã xác linh kiện": "PC Parts",
+    "Linh kiện & Thiết bị điện tử": "PC Parts",
+    "Máy chơi game Handheld & Console": "PC Parts",
     "Điện thoại thông minh & Phụ kiện Mobile": "Phones & Mobile",
     "Linh kiện & Sửa chữa điện thoại": "Phones & Mobile",
     "Phần mềm & Unlock điện thoại (ROM/Root/iCloud)": "Phones & Mobile",
-    "Máy ảnh & Thiết bị quay chụp": "Cameras & Audio",
-    "Tai nghe & Thiết bị âm thanh": "Cameras & Audio",
+    "Máy ảnh & Thiết bị quay chụp": "Cameras",
+    "Tai nghe & Thiết bị âm thanh": "Audio",
     "Thanh lý & Pass đồ cũ sinh viên": "General Market",
     "Thanh lý đồ gia dụng & Nội thất văn phòng": "General Market",
     "Cộng đồng địa phương & Rao vặt vùng miền": "General Market",
+    # Legacy combined buckets map to a sensible default; split_legacy_category
+    # refines them using the group name.
+    "PC Parts & Peripherals": "PC Parts",
+    "Cameras & Audio": "Cameras",
 }
+
+
+def _fold(value):
+    """Lowercase and strip diacritics for resilient keyword matching."""
+    normalized = unicodedata.normalize("NFKD", value or "")
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch)).casefold()
+
+
+def peripheral_subcategory(slug, name):
+    """Return Mouse, Keyboard, or General Peripheral for a gear group."""
+    text = _fold(f"{slug} {name}")
+    if "ban ghe" in text:
+        return "General Peripheral"
+    if any(
+        key in text
+        for key in ("ban phim", "phim co", "keychron", "keyboard", "phimco", "vkg")
+    ):
+        return "Keyboard"
+    if "ban di chuot" in text:
+        return "General Peripheral"
+    if any(key in text for key in ("chuot", "mouse")):
+        return "Mouse"
+    return "General Peripheral"
+
+
+def _is_peripheral(text):
+    return any(
+        key in text
+        for key in (
+            "gaming gear",
+            "gaming & gear",
+            "gear 2nd",
+            "gearvn",
+            "gear vn",
+            "rogempire",
+            "spartacus",
+            "edra",
+            "logitech",
+            "keychron",
+            "ban phim",
+            "phim co",
+            "keyboard",
+            "phimco",
+            "vkg",
+            "chuot",
+            "mouse",
+            "ngoai vi",
+            "razer",
+            "steelseries",
+            "hyperx",
+            "corsair",
+            "zowie",
+            "pulsar",
+            "artisan",
+            "glorious",
+            "vaxee",
+        )
+    )
+
+
+def _is_audio(text):
+    return any(
+        key in text
+        for key in (
+            "tai nghe",
+            "audio",
+            "iem",
+            "dac",
+            "amp",
+            "true wireless",
+            "may nghe nhac",
+            "headphone",
+            "earphone",
+        )
+    )
+
+
+def split_legacy_category(slug, name, category):
+    """Refine an old combined category into the current buckets."""
+    category = (category or "").strip()
+    text = _fold(f"{slug} {name}")
+    if category == "PC Parts & Peripherals":
+        if _is_peripheral(text):
+            return "PC Peripherals", peripheral_subcategory(slug, name)
+        return "PC Parts", ""
+    if category == "Cameras & Audio":
+        if _is_peripheral(text):
+            return "PC Peripherals", peripheral_subcategory(slug, name)
+        if _is_audio(text):
+            return "Audio", ""
+        return "Cameras", ""
+    if category == "PC Peripherals":
+        return category, peripheral_subcategory(slug, name)
+    return category, ""
 
 
 def consolidate_category(category):
@@ -393,7 +495,12 @@ def consolidate_category(category):
     return CATEGORY_CONSOLIDATION.get(category, "Other")
 
 
+def classify_consolidated_pair(slug, name):
+    """Classify a group into a current category and subcategory."""
+    fine, _subcategory = classify_group(slug, name)
+    return split_legacy_category(slug, name, consolidate_category(fine))
+
+
 def classify_consolidated(slug, name):
-    """Classify a group into one of the commerce buckets."""
-    category, _subcategory = classify_group(slug, name)
-    return consolidate_category(category), ""
+    """Classify a group into ``(category, subcategory)``."""
+    return classify_consolidated_pair(slug, name)

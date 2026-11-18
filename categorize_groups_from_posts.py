@@ -121,7 +121,10 @@ def save_review(items):
 
 
 def current_pair(row):
-    return (consolidate_category(row.get("category") or ""), "")
+    return (
+        consolidate_category(row.get("category") or ""),
+        row.get("subcategory") or "",
+    )
 
 
 def category_taxonomy(groups):

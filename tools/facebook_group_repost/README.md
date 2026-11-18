@@ -30,9 +30,11 @@ groups, and select individual groups or whole categories before reposting. Use *
 Ctrl+C to copy the selected group links to the clipboard. To add a group that is
 not in the database, paste its Facebook group link and click **Fetch and add**: the tool opens the
 link in the logged-in Chrome session, reads the group name, classifies it, and saves it to the
-database so it is available for later runs. To re-categorize groups, select them and choose a
-target in **Move selected to** (or right-click a group/category and pick a target): the move updates
-the database and the saved category choices so future extraction keeps it. Log in manually in
+database so it is available for later runs. The tree shows each group's category and subcategory;
+PC Peripherals groups use **Mouse**, **Keyboard**, or **General Peripheral**. To re-categorize
+groups, select them, choose a target in **Move selected to** and optionally a subcategory (or
+right-click a group/category and pick a target): the move updates the database and the saved
+category choices so future extraction keeps it. Log in manually in
 Chrome, then click **Save cookies** to store the session for **Login (cookies)**; the status bar
 reports when the cookies were saved, alongside the other action statuses.
 
